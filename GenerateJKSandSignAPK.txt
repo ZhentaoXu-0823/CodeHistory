@@ -1,0 +1,23 @@
+How to generate a .jks file to sign APK
+
+Generate .jks file.
+
+google signature：/build/target/product/security
+MTK signature： /device/mediatek/security
+
+Access to 'security' directory by 'cd' command in android project source code environment：
+1、 openssl pkcs8 -inform DER -nocrypt -in platform.pk8 -out platform.pem    //generate platform.pem
+
+2、 openssl pkcs12 -export -in platform.x509.pem -out platform.p12 -inkey platform.pem -password pass:[PASSWORD] -name {NAME] //generate platform.p12
+
+3、keytool -importkeystore -deststorepass [PASSWORD] -destkeystore [NAME].jks -srckeystore platform.p12     //generate .jks
+
+4、keytool -importkeystore -srckeystore [NAME].jks -destkeystore [NAME].jks -deststoretype pkcs12  //migrate to PKCS12
+
+
+
+
+Sign APK by .jks
+
+Access to build-tools directory.
+command: apksigner sign --ks [NAME].jks --ks-key-alias [NAME] --out new.apk old.apk
