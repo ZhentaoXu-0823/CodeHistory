@@ -1,0 +1,1 @@
+git clean -fd && git reset --hard HEAD~2 && git pull --rebase
