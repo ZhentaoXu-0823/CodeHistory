@@ -7,8 +7,10 @@ import android.os.Bundle;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
+import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -20,7 +22,8 @@ public class MainActivity extends AppCompatActivity implements PermissionsCheckU
 
     private static final String[] REQUEST_PERMISSIONS = {
             "android.permission.READ_PHONE_STATE",
-            "android.permission.READ_SMS"
+            "android.permission.READ_SMS",
+            "android.permission.MODIFY_PHONE_STATE"
     };
 
     private Context context;
@@ -37,6 +40,24 @@ public class MainActivity extends AppCompatActivity implements PermissionsCheckU
             @Override
             public void onClick(View view) {
                 displaySimInfo();
+            }
+        });
+
+        ((Button) findViewById(R.id.btn_activite_esim)).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String esimSubIdContent = getEditText(R.id.et_esim_subid);
+                int subId = Integer.parseInt(TextUtils.isEmpty(esimSubIdContent) ? "-1" : esimSubIdContent);
+                SimInfoUtil.activateEsimBySubId(context, subId, true);
+            }
+        });
+
+        ((Button) findViewById(R.id.btn_cancel_esim)).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String esimSubIdContent = getEditText(R.id.et_esim_subid);
+                int subId = Integer.parseInt(TextUtils.isEmpty(esimSubIdContent) ? "-1" : esimSubIdContent);
+                SimInfoUtil.activateEsimBySubId(context, subId, false);
             }
         });
     }
@@ -66,5 +87,20 @@ public class MainActivity extends AppCompatActivity implements PermissionsCheckU
     @Override
     public void onPermissionsDenied() {
         Toast.makeText(context, "Permission denined.", Toast.LENGTH_SHORT).show();
+    }
+
+    private String getEditText(int id) {
+        EditText et = null;
+        String content = null;
+        et = findViewById(id);
+        if (et != null) {
+            content = et.getText().toString();
+            if (TextUtils.isEmpty(content)) {
+                content = "";
+            }
+        } else {
+            content = "";
+        }
+        return content;
     }
 }
