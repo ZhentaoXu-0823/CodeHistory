@@ -6,6 +6,7 @@ import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,12 +17,14 @@ public class SimInfoUtil {
         int indexId;
         String phoneNumber;
         boolean isEsim;
+        boolean isActive;
 
         public SimInfo(int subId, int indexId, String phoneNumber, boolean isEsim) {
             this.subId = subId;
             this.indexId = indexId;
             this.phoneNumber = phoneNumber;
             this.isEsim = isEsim;
+            this.isActive = isActive;
         }
 
         @Override
@@ -39,7 +42,7 @@ public class SimInfoUtil {
         TelephonyManager telephonyManager = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
 
         if (subscriptionManager != null) {
-            List<SubscriptionInfo> subscriptionInfoList = subscriptionManager.getActiveSubscriptionInfoList();
+            List<SubscriptionInfo> subscriptionInfoList = getSubscriptionInfoList(subscriptionManager);
             if (subscriptionInfoList != null) {
                 for (SubscriptionInfo subscriptionInfo : subscriptionInfoList) {
                     int subId = subscriptionInfo.getSubscriptionId();
@@ -62,5 +65,17 @@ public class SimInfoUtil {
             }
         }
         return simInfoList;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<SubscriptionInfo> getSubscriptionInfoList(SubscriptionManager subscriptionManager) {
+        try {
+            Method method = SubscriptionManager.class.getDeclaredMethod("getAllSubscriptionInfoList");
+            method.setAccessible(true);
+            return (List<SubscriptionInfo>) method.invoke(subscriptionManager);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return subscriptionManager.getActiveSubscriptionInfoList();
+        }
     }
 }
