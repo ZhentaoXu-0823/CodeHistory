@@ -20,14 +20,14 @@ public class SimInfoUtil {
         int indexId;
         String phoneNumber;
         boolean isEsim;
-        boolean isActive;
+        String iccid;
 
-        public SimInfo(int subId, int indexId, String phoneNumber, boolean isEsim) {
+        public SimInfo(int subId, int indexId, String phoneNumber, boolean isEsim, String iccid) {
             this.subId = subId;
             this.indexId = indexId;
             this.phoneNumber = phoneNumber;
             this.isEsim = isEsim;
-            this.isActive = isActive;
+            this.iccid = iccid;
         }
 
         @Override
@@ -35,7 +35,8 @@ public class SimInfoUtil {
             return "SubId: " + subId +
                     ", IndexId: " + indexId +
                     ", PhoneNumber: " + phoneNumber +
-                    ", isEsim: " + isEsim;
+                    ", isEsim: " + isEsim +
+                    ", ICCID: " + iccid;
         }
     }
 
@@ -51,18 +52,22 @@ public class SimInfoUtil {
                     int subId = subscriptionInfo.getSubscriptionId();
                     int indexId = subscriptionInfo.getSimSlotIndex();
                     String phoneNumber = null;
+                    String iccid = null;
                     if (context.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
                             == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                             TelephonyManager subTelephonyManager = telephonyManager.createForSubscriptionId(subId);
                             phoneNumber = subTelephonyManager.getLine1Number();
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                iccid = subscriptionInfo.getIccId();
+                            }
                         } else {
                             phoneNumber = telephonyManager.getLine1Number();
                         }
                     }
                     boolean isEsim = subscriptionInfo.isEmbedded();
 
-                    SimInfo simInfo = new SimInfo(subId, indexId, phoneNumber, isEsim);
+                    SimInfo simInfo = new SimInfo(subId, indexId, phoneNumber, isEsim, iccid);
                     simInfoList.add(simInfo);
                 }
             }
