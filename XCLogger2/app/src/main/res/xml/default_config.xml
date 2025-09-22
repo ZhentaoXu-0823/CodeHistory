@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<XcLoggerConfig xmlns:android="http://schemas.android.com/apk/res/android">
+
+<!--  Total size （GB）  -->
+    <total_size>4</total_size>
+
+<!--  Log file max size （MB）  -->
+    <file_size>4</file_size>
+
+<!--  Buffer size （byte）  -->
+    <buffer_size>4096</buffer_size>
+
+<!--  Log directory path  -->
+    <log_dir>/storage/emulated/0/sdcard/XcLogger</log_dir>
+
+<!--  Log coverage period (Hour)  -->
+    <log_period>168</log_period>
+
+<!--  Filtering rules  -->
+    <filtering_rules>
+        <!-- all-No filtering -->
+        <tag>all</tag>
+        <!-- all-No filtering, D, V, W, E (levels name separated by ,)-->
+        <level>all</level>
+        <!-- all-No filtering (packages name separated by ,) -->
+        <package_name>all</package_name>
+    </filtering_rules>
+
+</XcLoggerConfig>
