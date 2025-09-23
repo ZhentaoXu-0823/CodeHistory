@@ -13,6 +13,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.processctr.ConfigLoader;
+import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
@@ -21,11 +22,13 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  *
  * 功能方法：
  * - onCreate(Bundle) - 初始化配置界面
- * - checkLogRunningState() - 检查日志运行状态并禁用路径编辑
+ * - checkLogRunningState() - 检查日志运行状态并禁用所有配置编辑
  * - addRow(LinearLayout, String, String) - 创建普通标签+输入行
  * - addRowWithUnit(LinearLayout, String, String, String, boolean) - 创建带单位的标签+输入行
  * - save() - 保存所有配置到数据库并更新全局缓存
  * - safeInt(String) - 安全字符串转整数
+ * - buildConfigDetailsString(XcLoggerConfig) - 构建配置详情字符串
+ * - setAllInputsEnabled(boolean) - 设置所有输入框的启用状态
  */
 public class XcLoggerConfigActivity extends AppCompatActivity {
     private EditText etTotal;
@@ -38,6 +41,9 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
     private EditText etPkg;
     private XcLoggerConfig cfg;
     private XcLoggerDatabase database;
+    private ProcessController processController;
+    private TextView btnSave;
+    private boolean isLogRunning = false;
 
     /**
      * 初始化配置界面
@@ -68,7 +74,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         LinearLayout.LayoutParams lpTitle = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         top.addView(title, lpTitle);
 
-        TextView btnSave = new TextView(this);
+        btnSave = new TextView(this);
         btnSave.setText("Save");
         btnSave.setTextColor(0xFF1976D2);
         btnSave.setTextSize(16);
@@ -84,6 +90,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
 
         cfg = new ConfigLoader().load(this);
         database = new XcLoggerDatabase(this);
+        processController = ProcessController.getInstance(this);
 
 // With unit labels
         etTotal = addRowWithUnit(details, "total_size", String.valueOf(cfg.getTotalSizeGb()), "GB", true);
@@ -97,23 +104,92 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         etLevel = addRow(details, "filter_level", cfg.getFilterLevel());
         etPkg = addRow(details, "filter_package", cfg.getFilterPackage());
 
-// Check if log is running and disable path editing
+// Check if log is running and disable all editing
         checkLogRunningState();
 
-        btnSave.setOnClickListener(v -> { save(); setResult(RESULT_OK); finish(); });
+        btnSave.setOnClickListener(v -> {
+            if (!isLogRunning) {
+                save();
+                setResult(RESULT_OK);
+                finish();
+            } else {
+                Toast.makeText(this, "Log is running, please stop log first before modifying configuration", Toast.LENGTH_LONG).show();
+            }
+        });
 
         setContentView(root);
     }
 
     /**
-     * 检查日志运行状态并禁用路径编辑
+     * 检查日志运行状态并禁用所有配置编辑
      */
     private void checkLogRunningState() {
-        boolean isRunning = database.loadRunningState();
-        if (isRunning) {
-            etDir.setEnabled(false);
+        isLogRunning = database.loadRunningState();
+        if (isLogRunning) {
+            // 禁用所有输入框
+            setAllInputsEnabled(false);
+            btnSave.setTextColor(0xFF999999);
+            btnSave.setText("Save");
+
+            // 显示提示信息
+            Toast.makeText(this, "Log is running, all configuration is disabled", Toast.LENGTH_LONG).show();
+        } else {
+            // 启用所有输入框
+            setAllInputsEnabled(true);
+
+            // 启用保存按钮
+            btnSave.setEnabled(true);
+            btnSave.setTextColor(0xFF1976D2);
+            btnSave.setText("Save");
+        }
+    }
+
+    /**
+     * 设置所有输入框的启用状态
+     * @param enabled 是否启用
+     */
+    private void setAllInputsEnabled(boolean enabled) {
+        etTotal.setEnabled(enabled);
+        etFile.setEnabled(enabled);
+        etBuffer.setEnabled(enabled);
+        etDir.setEnabled(enabled);
+        etPeriod.setEnabled(enabled);
+        etTag.setEnabled(enabled);
+        etLevel.setEnabled(enabled);
+        etPkg.setEnabled(enabled);
+
+        if (!enabled) {
+            // 设置禁用状态的提示文本
             etDir.setHint("Log is running, please stop log first before modifying file path");
             etDir.setHintTextColor(0xFF999999);
+
+            // 为其他输入框也设置提示
+            etTotal.setHint("Log is running, configuration disabled");
+            etFile.setHint("Log is running, configuration disabled");
+            etBuffer.setHint("Log is running, configuration disabled");
+            etPeriod.setHint("Log is running, configuration disabled");
+            etTag.setHint("Log is running, configuration disabled");
+            etLevel.setHint("Log is running, configuration disabled");
+            etPkg.setHint("Log is running, configuration disabled");
+
+            // 设置提示文本颜色
+            etTotal.setHintTextColor(0xFF999999);
+            etFile.setHintTextColor(0xFF999999);
+            etBuffer.setHintTextColor(0xFF999999);
+            etPeriod.setHintTextColor(0xFF999999);
+            etTag.setHintTextColor(0xFF999999);
+            etLevel.setHintTextColor(0xFF999999);
+            etPkg.setHintTextColor(0xFF999999);
+        } else {
+            // 清除提示文本
+            etTotal.setHint("");
+            etFile.setHint("");
+            etBuffer.setHint("");
+            etDir.setHint("");
+            etPeriod.setHint("");
+            etTag.setHint("");
+            etLevel.setHint("");
+            etPkg.setHint("");
         }
     }
 
@@ -186,13 +262,13 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
      * 保存所有配置到数据库并更新全局缓存
      */
     private void save() {
-        // Check if log is running and path is being modified
-        boolean isRunning = database.loadRunningState();
-        if (isRunning && !etDir.getText().toString().equals(cfg.getLogDir())) {
-            Toast.makeText(this, "Log is running, please stop log first before modifying file path", Toast.LENGTH_LONG).show();
+        // 再次检查运行状态（双重保险）
+        if (isLogRunning) {
+            Toast.makeText(this, "Log is running, please stop log first before modifying configuration", Toast.LENGTH_LONG).show();
             return;
         }
 
+        // 保存配置
         cfg.setTotalSizeGb(safeInt(etTotal.getText().toString()));
         cfg.setFileSizeMb(safeInt(etFile.getText().toString()));
         cfg.setBufferSizeBytes(safeInt(etBuffer.getText().toString()));
@@ -203,6 +279,28 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         cfg.setFilterPackage(etPkg.getText().toString());
         new XcLoggerDatabase(this).saveConfig(cfg);
         ConfigLoader.replaceWith(cfg);
+
+        // 记录配置修改历史
+        String configDetails = buildConfigDetailsString(cfg);
+        processController.getFileManager().appendConfigChangeHistory(configDetails);
+    }
+
+    /**
+     * 构建配置详情字符串（键-值格式）
+     * @param config 配置对象
+     * @return 配置详情字符串
+     */
+    private String buildConfigDetailsString(XcLoggerConfig config) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("total_size-").append(config.getTotalSizeGb()).append("; ");
+        sb.append("file_size-").append(config.getFileSizeMb()).append("; ");
+        sb.append("buffer_size-").append(config.getBufferSizeBytes()).append("; ");
+        sb.append("log_dir-").append(config.getLogDir()).append("; ");
+        sb.append("log_period-").append(config.getLogPeriodHours()).append("; ");
+        sb.append("filter_tag-").append(config.getFilterTag()).append("; ");
+        sb.append("filter_level-").append(config.getFilterLevel()).append("; ");
+        sb.append("filter_package-").append(config.getFilterPackage());
+        return sb.toString();
     }
 
     /**

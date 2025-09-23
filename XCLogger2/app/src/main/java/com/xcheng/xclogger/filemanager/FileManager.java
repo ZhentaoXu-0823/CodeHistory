@@ -21,15 +21,19 @@ import java.util.Locale;
  * - createNewMainLogFile() - 创建新的主日志文件
  * - appendToMainLog(byte[], int) - 追加数据到主日志文件
  * - appendOperateHistory(String) - 追加操作历史记录
+ * - appendOperationHistory(String) - 追加操作历史记录到A_OperationHistory.txt
+ * - appendConfigChangeHistory(String) - 追加配置修改记录（键值对格式）
  * - rotateIfNeeded(int) - 检查并执行文件轮转
  * - getCurrentMainLogFile() - 获取当前主日志文件
  * - getBaseDir() - 获取基础目录
+ * - getOperationHistoryFile() - 获取操作历史文件
  */
 public class FileManager {
     private Context context;
     private File baseDir;
     private File currentMainLogFile;
     private File historyFile;
+    private File operationHistoryFile;
     private XcLoggerConfig config;
 
     /**
@@ -45,6 +49,8 @@ public class FileManager {
         }
         this.baseDir = new File(this.config.getLogDir());
         this.historyFile = new File(this.baseDir, "XcLoggerOperateHistory.txt");
+        // A_OperationHistory.txt文件保存在应用私有目录
+        this.operationHistoryFile = new File(context.getFilesDir(), "A_OperationHistory.txt");
     }
 
     /**
@@ -55,6 +61,22 @@ public class FileManager {
         try {
             if (!baseDir.exists()) {
                 return baseDir.mkdirs();
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 确保操作历史文件目录存在
+     * @return 是否成功创建或目录已存在
+     */
+    private boolean ensureOperationHistoryDir() {
+        try {
+            File parentDir = operationHistoryFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                return parentDir.mkdirs();
             }
             return true;
         } catch (Exception e) {
@@ -123,6 +145,50 @@ public class FileManager {
     }
 
     /**
+     * 追加操作历史记录到A_OperationHistory.txt
+     * @param operation 操作详情
+     */
+    public void appendOperationHistory(String operation) {
+        try {
+            if (!ensureOperationHistoryDir()) {
+                return;
+            }
+
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+            String logEntry = "[" + timestamp + "] " + operation + "\n";
+
+            try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
+                fos.write(logEntry.getBytes("UTF-8"));
+                fos.flush();
+            }
+        } catch (IOException e) {
+            // 静默处理
+        }
+    }
+
+    /**
+     * 追加配置修改记录（键值对格式）
+     * @param configDetails 配置详情字符串（键-值格式）
+     */
+    public void appendConfigChangeHistory(String configDetails) {
+        try {
+            if (!ensureOperationHistoryDir()) {
+                return;
+            }
+
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+            String logEntry = "[" + timestamp + "] Config changed: " + configDetails + "\n";
+
+            try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
+                fos.write(logEntry.getBytes("UTF-8"));
+                fos.flush();
+            }
+        } catch (IOException e) {
+            // 静默处理
+        }
+    }
+
+    /**
      * 检查并执行文件轮转
      * @param additionalBytes 即将添加的字节数
      */
@@ -154,5 +220,13 @@ public class FileManager {
      */
     public File getBaseDir() {
         return baseDir;
+    }
+
+    /**
+     * 获取操作历史文件
+     * @return 操作历史文件
+     */
+    public File getOperationHistoryFile() {
+        return operationHistoryFile;
     }
 }

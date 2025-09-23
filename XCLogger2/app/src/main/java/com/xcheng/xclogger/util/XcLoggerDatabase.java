@@ -2,6 +2,7 @@ package com.xcheng.xclogger.util;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 /**
  * XcLoggerDatabase - SharedPreferences数据库管理类

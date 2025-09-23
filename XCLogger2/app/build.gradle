@@ -11,7 +11,7 @@ android {
         minSdk 29
         targetSdk 33
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -25,6 +25,32 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    applicationVariants.all { variant ->
+        def baseName = "XCLogger" // APK基础名称
+        def buildType = variant.buildType.name
+        def versionName = variant.versionName ?: "V1.0.0"
+        def versionCode = variant.versionCode ?: 1
+        def timestamp = new Date().format("yyyyMMddHHmm")
+        def apkName
+
+        // 根据构建类型应用不同命名规则
+        if (buildType == "debug") {
+            // Debug版本：[APK Name]_[Build Type].apk
+            apkName = "${baseName}_${buildType}.apk"
+        } else {
+            // Release版本：[APK Name]_v[Release Version]_[Debug Version]_[Build Type]_[Timestamp].apk
+            apkName = "${baseName}_v${versionName}_${versionCode}_${buildType}_${timestamp}.apk"
+        }
+
+        // 过滤非法字符
+        apkName = apkName.replaceAll("[^a-zA-Z0-9_.-]", "_")
+
+        // 应用文件名
+        variant.outputs.each { output ->
+            output.outputFileName = apkName
+        }
     }
 }
 
