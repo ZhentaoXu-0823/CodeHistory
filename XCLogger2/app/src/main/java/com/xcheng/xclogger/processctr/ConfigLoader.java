@@ -2,6 +2,7 @@ package com.xcheng.xclogger.processctr;
 
 import android.content.Context;
 import android.content.res.XmlResourceParser;
+import android.util.Log;
 
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.util.XcLoggerConfig;
@@ -18,6 +19,7 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * - parseFilterBlock(XmlResourceParser, XcLoggerConfig) - 解析过滤规则配置
  */
 public class ConfigLoader {
+    private static final String TAG = "ConfigLoader";
     private static volatile XcLoggerConfig CURRENT;
 
     /**
@@ -30,10 +32,16 @@ public class ConfigLoader {
         XcLoggerConfig config = db.loadConfig();
 
         if (config == null) {
+            Log.i(TAG, "No config in database, loading from XML");
             config = parseXml(ctx);
             if (config != null) {
+                Log.i(TAG, "Config loaded from XML, saving to database");
                 db.saveConfig(config);
+            } else {
+                Log.e(TAG, "Failed to load config from XML");
             }
+        } else {
+            Log.i(TAG, "Config loaded from database");
         }
 
         CURRENT = config;
@@ -87,8 +95,15 @@ public class ConfigLoader {
                 eventType = parser.next();
             }
             parser.close();
+
+            Log.i(TAG, "XML config parsed successfully: " +
+                    "total_size=" + config.getTotalSizeGb() + "GB, " +
+                    "file_size=" + config.getFileSizeMb() + "MB, " +
+                    "log_dir=" + config.getLogDir());
+
             return config;
         } catch (Exception e) {
+            Log.e(TAG, "Failed to parse XML config", e);
             return null;
         }
     }
@@ -117,6 +132,7 @@ public class ConfigLoader {
                 eventType = parser.next();
             }
         } catch (Exception e) {
+            Log.e(TAG, "Failed to parse filter rules, using defaults", e);
             // 使用默认值
             config.setFilterTag("all");
             config.setFilterLevel("all");

@@ -2,7 +2,6 @@ package com.xcheng.xclogger.util;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.util.Log;
 
 /**
  * XcLoggerDatabase - SharedPreferences数据库管理类
@@ -13,9 +12,11 @@ import android.util.Log;
  * - loadConfig() - 从数据库加载配置
  * - saveRunningState(boolean) - 保存运行状态
  * - loadRunningState() - 加载运行状态
+ * - getDatabaseVersion() - 获取数据库版本
+ * - setDatabaseVersion(int) - 设置数据库版本
  */
 public class XcLoggerDatabase {
-    private static final String PREF = "xc_logger_pref";
+    public static final String PREF = "xc_logger_pref";
     private static final String K_TOTAL = "total_size_gb";
     private static final String K_FILE = "file_size_mb";
     private static final String K_BUFFER = "buffer_size_bytes";
@@ -25,6 +26,7 @@ public class XcLoggerDatabase {
     private static final String K_LEVEL = "filter_level";
     private static final String K_PKG = "filter_pkg";
     private static final String K_RUNNING = "is_running";
+    private static final String K_VERSION = "database_version";
 
     private final SharedPreferences sp;
 
@@ -85,5 +87,21 @@ public class XcLoggerDatabase {
      */
     public boolean loadRunningState() {
         return sp.getBoolean(K_RUNNING, false);
+    }
+
+    /**
+     * 获取数据库版本
+     * @return 数据库版本
+     */
+    public int getDatabaseVersion() {
+        return sp.getInt(K_VERSION, 1);
+    }
+
+    /**
+     * 设置数据库版本
+     * @param version 版本号
+     */
+    public void setDatabaseVersion(int version) {
+        sp.edit().putInt(K_VERSION, version).apply();
     }
 }
