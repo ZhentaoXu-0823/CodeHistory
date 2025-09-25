@@ -8,7 +8,7 @@ import com.xcheng.xclogger.util.XcLoggerConfig;
  *
  * 功能方法：
  * - LogBuffer() - 构造函数，初始化日志缓冲区
- * - addLogLine(String) - 添加日志行到缓冲区
+ * - append(byte[], int) - 添加字节数据到缓冲区
  * - flush() - 刷新缓冲区数据
  * - isFull() - 检查缓冲区是否已满
  * - getUsedLength() - 获取已使用长度
@@ -17,7 +17,8 @@ import com.xcheng.xclogger.util.XcLoggerConfig;
  * - clear() - 清空缓冲区
  */
 public class LogBuffer {
-    private StringBuilder buffer;
+    private byte[] buffer;
+    private int currentSize;
     private int maxSize;
     private OnFlushListener flushListener;
 
@@ -28,8 +29,9 @@ public class LogBuffer {
         /**
          * 刷新时回调
          * @param data 要刷新的数据
+         * @param len 数据长度
          */
-        void onFlush(String data);
+        void onFlush(byte[] data, int len);
     }
 
     /**
@@ -38,40 +40,44 @@ public class LogBuffer {
     public LogBuffer() {
         XcLoggerConfig config = ConfigLoader.current();
         this.maxSize = (config != null) ? config.getBufferSizeBytes() : 4096;
-        this.buffer = new StringBuilder();
+        this.buffer = new byte[maxSize];
+        this.currentSize = 0;
     }
 
     /**
-     * 添加日志行到缓冲区
-     * @param line 日志行
+     * 添加字节数据到缓冲区
+     * @param data 字节数据
+     * @param len 数据长度
      */
-    public void addLogLine(String line) {
-        if (line == null) return;
+    public void append(byte[] data, int len) {
+        if (data == null || len <= 0) return;
 
-        // 如果单行超过缓冲区大小，直接刷新
-        if (line.length() > maxSize) {
+        // 如果单次数据超过缓冲区大小，直接刷新
+        if (len > maxSize) {
             flush();
             if (flushListener != null) {
-                flushListener.onFlush(line + "\n");
+                flushListener.onFlush(data, len);
             }
             return;
         }
 
         // 检查添加后是否超过缓冲区大小
-        if (buffer.length() + line.length() + 1 > maxSize) {
+        if (currentSize + len > maxSize) {
             flush();
         }
 
-        buffer.append(line).append("\n");
+        // 添加数据到缓冲区
+        System.arraycopy(data, 0, buffer, currentSize, len);
+        currentSize += len;
     }
 
     /**
      * 刷新缓冲区数据
      */
     public void flush() {
-        if (buffer.length() > 0 && flushListener != null) {
-            flushListener.onFlush(buffer.toString());
-            buffer.setLength(0);
+        if (currentSize > 0 && flushListener != null) {
+            flushListener.onFlush(buffer, currentSize);
+            currentSize = 0;
         }
     }
 
@@ -80,7 +86,7 @@ public class LogBuffer {
      * @return 是否已满
      */
     public boolean isFull() {
-        return buffer.length() >= maxSize;
+        return currentSize >= maxSize;
     }
 
     /**
@@ -88,7 +94,7 @@ public class LogBuffer {
      * @return 已使用字节数
      */
     public int getUsedLength() {
-        return buffer.length();
+        return currentSize;
     }
 
     /**
@@ -111,6 +117,6 @@ public class LogBuffer {
      * 清空缓冲区
      */
     public void clear() {
-        buffer.setLength(0);
+        currentSize = 0;
     }
 }

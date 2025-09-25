@@ -4,143 +4,122 @@ import android.content.Context;
 import android.util.Log;
 
 import com.xcheng.xclogger.filemanager.FileManager;
+import com.xcheng.xclogger.recorder.LogBuffer;
 import com.xcheng.xclogger.recorder.SystemLogCatcher;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 /**
- * ProcessController - 流程控制器，协调各模块工作并记录操作历史
+ * ProcessController - 进程控制器，负责协调日志捕获的各个组件
  *
  * 功能方法：
- * - ProcessController(Context) - 私有构造函数，初始化流程控制器
  * - getInstance(Context) - 获取单例实例
- * - startLogging() - 启动日志记录流程
- * - stopLogging() - 停止日志记录流程
+ * - startLogging() - 开始日志记录
+ * - stopLogging() - 停止日志记录
  * - appendOperateSafe(String) - 安全地追加操作记录
  * - recordOperationHistory(String) - 记录操作历史
  * - getFileManager() - 获取文件管理器实例
- * - getSystemLogCatcher() - 获取日志捕获器实例
- * - isRunning() - 检查运行状态
  */
 public class ProcessController {
     private static final String TAG = "ProcessController";
-    private static volatile ProcessController instance;
+    private static ProcessController instance;
 
-    private FileManager fileManager;
-    private SystemLogCatcher systemLogCatcher;
     private Context context;
-    private boolean isRunning = false;
+    private FileManager fileManager;
+    private SystemLogCatcher logCatcher;
+    private LogBuffer logBuffer;
+    private XcLoggerDatabase database;
+    private XcLoggerConfig config;
 
     /**
-     * 私有构造函数，初始化流程控制器
+     * 私有构造函数，实现单例模式
      * @param ctx Android上下文
      */
     private ProcessController(Context ctx) {
         this.context = ctx;
+        this.database = new XcLoggerDatabase(ctx);
+        this.config = ConfigLoader.getInstance().getCurrentConfig();
         this.fileManager = new FileManager(ctx);
-        this.systemLogCatcher = new SystemLogCatcher();
+        this.logBuffer = new LogBuffer();
+        this.logCatcher = new SystemLogCatcher();
 
-        Log.i(TAG, "ProcessController initialized");
+        // 设置日志缓冲区监听器
+        this.logBuffer.setOnFlushListener(new LogBuffer.OnFlushListener() {
+            @Override
+            public void onFlush(byte[] data, int len) {
+                fileManager.appendToMainLog(data, len);
+            }
+        });
+
+        // 设置日志捕获器监听器
+        this.logCatcher.setOnLogLineListener(new SystemLogCatcher.OnLogLineListener() {
+            @Override
+            public void onLogLine(String line) {
+                logBuffer.append(line.getBytes(), line.length());
+            }
+        });
     }
 
     /**
      * 获取单例实例
-     * @param ctx Android上下文
-     * @return ProcessController实例
+     * @param context Android上下文
+     * @return ProcessController单例实例
      */
-    public static ProcessController getInstance(Context ctx) {
+    public static synchronized ProcessController getInstance(Context context) {
         if (instance == null) {
-            synchronized (ProcessController.class) {
-                if (instance == null) {
-                    instance = new ProcessController(ctx);
-                }
-            }
+            instance = new ProcessController(context);
         }
         return instance;
     }
 
     /**
-     * 启动日志记录流程
+     * 开始日志记录
      */
     public void startLogging() {
-        if (isRunning) {
-            Log.w(TAG, "Logging is already running");
-            return;
-        }
-
         try {
-            // 检查配置是否可用
-            XcLoggerConfig config = ConfigLoader.current();
-            if (config == null) {
-                Log.e(TAG, "Configuration is not available");
-                return;
-            }
+            Log.i(TAG, "Starting logging process");
 
-            // 确保基础目录存在
-            if (!fileManager.ensureBaseDir()) {
-                Log.e(TAG, "Failed to ensure base directory");
-                return;
-            }
+            // 更新配置
+            this.config = ConfigLoader.getInstance().getCurrentConfig();
 
-            // 创建新的主日志文件
-            if (!fileManager.createNewMainLogFile()) {
-                Log.e(TAG, "Failed to create main log file");
-                return;
-            }
+            // 更新FileManager路径
+            fileManager.updatePaths();
 
-            // 设置日志行监听器
-            systemLogCatcher.setOnLogLineListener(line -> {
-                try {
-                    fileManager.appendToMainLog(line.getBytes("UTF-8"), line.length());
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to append log line", e);
-                }
-            });
+            // 开始日志捕获
+            logCatcher.startCapture(config);
 
-            // 启动系统日志捕获
-            systemLogCatcher.start();
-            isRunning = true;
-
-            // 保存运行状态到数据库
-            XcLoggerDatabase database = new XcLoggerDatabase(context);
+            // 更新数据库状态
             database.saveRunningState(true);
 
-            // 记录操作历史
+            Log.i(TAG, "Logging process started successfully");
             recordOperationHistory("Logging started successfully");
-
-            Log.i(TAG, "Logging started successfully");
-
         } catch (Exception e) {
-            Log.e(TAG, "Failed to start logging", e);
-            isRunning = false;
+            Log.e(TAG, "Failed to start logging process", e);
+            recordOperationHistory("Error: Failed to start logging - " + e.getMessage());
         }
     }
 
     /**
-     * 停止日志记录流程
+     * 停止日志记录
      */
     public void stopLogging() {
-        if (!isRunning) {
-            Log.w(TAG, "Logging is not running");
-            return;
-        }
-
         try {
-            // 停止系统日志捕获
-            systemLogCatcher.stop();
-            isRunning = false;
+            Log.i(TAG, "Stopping logging process");
 
-            // 保存运行状态到数据库
-            XcLoggerDatabase database = new XcLoggerDatabase(context);
+            // 停止日志捕获
+            logCatcher.stopCapture();
+
+            // 刷新缓冲区
+            logBuffer.flush();
+
+            // 更新数据库状态
             database.saveRunningState(false);
 
-            // 记录操作历史
+            Log.i(TAG, "Logging process stopped successfully");
             recordOperationHistory("Logging stopped successfully");
-
-            Log.i(TAG, "Logging stopped successfully");
-
         } catch (Exception e) {
-            Log.e(TAG, "Failed to stop logging", e);
+            Log.e(TAG, "Failed to stop logging process", e);
+            recordOperationHistory("Error: Failed to stop logging - " + e.getMessage());
         }
     }
 
@@ -150,13 +129,8 @@ public class ProcessController {
      */
     public void appendOperateSafe(String operation) {
         try {
-            String timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-                    .format(new java.util.Date());
-            String logEntry = "[" + timestamp + "] " + operation + "\n";
-
             // 使用新的操作历史记录方法
             fileManager.appendOperationHistory(operation);
-
         } catch (Exception e) {
             Log.e(TAG, "Failed to append operation record", e);
         }
@@ -180,21 +154,5 @@ public class ProcessController {
      */
     public FileManager getFileManager() {
         return fileManager;
-    }
-
-    /**
-     * 获取日志捕获器实例
-     * @return SystemLogCatcher实例
-     */
-    public SystemLogCatcher getSystemLogCatcher() {
-        return systemLogCatcher;
-    }
-
-    /**
-     * 检查运行状态
-     * @return 是否正在运行
-     */
-    public boolean isRunning() {
-        return isRunning;
     }
 }

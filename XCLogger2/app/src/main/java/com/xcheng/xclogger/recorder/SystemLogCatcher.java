@@ -17,13 +17,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * 功能方法：
  * - SystemLogCatcher() - 构造函数，初始化日志捕获器
- * - start() - 启动日志捕获
- * - stop() - 停止日志捕获
+ * - startCapture(XcLoggerConfig) - 启动日志捕获
+ * - stopCapture() - 停止日志捕获
  * - isRunning() - 检查运行状态
  * - setOnLogLineListener(OnLogLineListener) - 设置日志行监听器
  * - buildLogcatCommand(XcLoggerConfig) - 构建logcat命令
  * - readLogcatOutput() - 读取logcat输出
- * - getLogBuffer() - 获取缓冲区实例
  */
 public class SystemLogCatcher {
     private static final String TAG = "SystemLogCatcher";
@@ -31,7 +30,6 @@ public class SystemLogCatcher {
     private ExecutorService executor;
     private AtomicBoolean running = new AtomicBoolean(false);
     private OnLogLineListener logLineListener;
-    private LogBuffer logBuffer;
 
     /**
      * 日志行监听器接口
@@ -48,28 +46,20 @@ public class SystemLogCatcher {
      * 构造函数，初始化日志捕获器
      */
     public SystemLogCatcher() {
-        this.logBuffer = new LogBuffer();
         this.executor = Executors.newSingleThreadExecutor();
-
-        // 设置缓冲区刷新监听器
-        logBuffer.setOnFlushListener(data -> {
-            if (logLineListener != null) {
-                logLineListener.onLogLine(data);
-            }
-        });
     }
 
     /**
      * 启动日志捕获
+     * @param config 配置对象
      */
-    public void start() {
+    public void startCapture(XcLoggerConfig config) {
         if (running.get()) {
             Log.w(TAG, "LogCatcher is already running");
             return;
         }
 
         try {
-            XcLoggerConfig config = ConfigLoader.current();
             String logcatCommand = buildLogcatCommand(config);
 
             logcatProcess = Runtime.getRuntime().exec(logcatCommand);
@@ -88,7 +78,7 @@ public class SystemLogCatcher {
     /**
      * 停止日志捕获
      */
-    public void stop() {
+    public void stopCapture() {
         if (!running.get()) {
             Log.w(TAG, "LogCatcher is not running");
             return;
@@ -100,9 +90,6 @@ public class SystemLogCatcher {
             logcatProcess.destroy();
             logcatProcess = null;
         }
-
-        // 刷新缓冲区
-        logBuffer.flush();
 
         Log.i(TAG, "LogCatcher stopped");
     }
@@ -159,8 +146,8 @@ public class SystemLogCatcher {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(logcatProcess.getInputStream()))) {
             String line;
             while (running.get() && (line = reader.readLine()) != null) {
-                if (running.get()) {
-                    logBuffer.addLogLine(line);
+                if (running.get() && logLineListener != null) {
+                    logLineListener.onLogLine(line);
                 }
             }
         } catch (IOException e) {
@@ -170,13 +157,5 @@ public class SystemLogCatcher {
         } finally {
             running.set(false);
         }
-    }
-
-    /**
-     * 获取缓冲区实例
-     * @return LogBuffer实例
-     */
-    public LogBuffer getLogBuffer() {
-        return logBuffer;
     }
 }

@@ -1,142 +1,199 @@
 package com.xcheng.xclogger.processctr;
 
 import android.content.Context;
-import android.content.res.XmlResourceParser;
 import android.util.Log;
 
-import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
+
+import java.io.InputStream;
+
 /**
- * ConfigLoader - 配置加载器，从XML和数据库加载配置
+ * ConfigLoader - 配置加载器，负责从XML文件和数据库加载配置
  *
  * 功能方法：
- * - load(Context) - 加载配置（优先数据库，回退XML）
- * - replaceWith(XcLoggerConfig) - 替换当前配置实例
- * - current() - 获取当前配置实例
- * - parseXml(Context) - 解析XML配置文件
- * - parseFilterBlock(XmlResourceParser, XcLoggerConfig) - 解析过滤规则配置
+ * - getInstance() - 获取单例实例
+ * - load(Context) - 加载配置
+ * - replaceWith(XcLoggerConfig) - 替换当前配置
+ * - getCurrentConfig() - 获取当前配置
+ * - current() - 获取当前配置（静态方法）
+ * - updateConfig(XcLoggerConfig) - 更新配置并保存到数据库
+ * - loadFromDatabase(Context) - 从数据库加载配置
+ * - loadFromXml(Context) - 从XML文件加载配置
  */
 public class ConfigLoader {
     private static final String TAG = "ConfigLoader";
-    private static volatile XcLoggerConfig CURRENT;
+    private static ConfigLoader instance;
+    private XcLoggerConfig currentConfig;
 
     /**
-     * 加载配置（优先数据库，回退XML）
-     * @param ctx Android上下文
-     * @return 配置对象
+     * 私有构造函数，实现单例模式
      */
-    public XcLoggerConfig load(Context ctx) {
-        XcLoggerDatabase db = new XcLoggerDatabase(ctx);
-        XcLoggerConfig config = db.loadConfig();
+    private ConfigLoader() {
+        // 私有构造函数
+    }
 
-        if (config == null) {
-            Log.i(TAG, "No config in database, loading from XML");
-            config = parseXml(ctx);
-            if (config != null) {
-                Log.i(TAG, "Config loaded from XML, saving to database");
-                db.saveConfig(config);
-            } else {
-                Log.e(TAG, "Failed to load config from XML");
-            }
-        } else {
-            Log.i(TAG, "Config loaded from database");
+    /**
+     * 获取单例实例
+     * @return ConfigLoader单例实例
+     */
+    public static synchronized ConfigLoader getInstance() {
+        if (instance == null) {
+            instance = new ConfigLoader();
         }
-
-        CURRENT = config;
-        return CURRENT;
+        return instance;
     }
 
     /**
-     * 替换当前配置实例
-     * @param cfg 新的配置对象
-     */
-    public static void replaceWith(XcLoggerConfig cfg) {
-        CURRENT = cfg;
-    }
-
-    /**
-     * 获取当前配置实例
+     * 获取当前配置（静态方法）
      * @return 当前配置对象
      */
     public static XcLoggerConfig current() {
-        return CURRENT;
+        if (instance != null) {
+            return instance.getCurrentConfig();
+        }
+        return null;
     }
 
     /**
-     * 解析XML配置文件
-     * @param ctx Android上下文
-     * @return 解析后的配置对象
+     * 加载配置
+     * @param context Android上下文
+     * @return 配置对象
      */
-    private XcLoggerConfig parseXml(Context ctx) {
+    public XcLoggerConfig load(Context context) {
         try {
-            XmlResourceParser parser = ctx.getResources().getXml(R.xml.default_config);
-            XcLoggerConfig config = new XcLoggerConfig();
-
-            int eventType = parser.getEventType();
-            while (eventType != XmlResourceParser.END_DOCUMENT) {
-                if (eventType == XmlResourceParser.START_TAG) {
-                    String tagName = parser.getName();
-                    if ("total_size".equals(tagName)) {
-                        config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
-                    } else if ("file_size".equals(tagName)) {
-                        config.setFileSizeMb(Integer.parseInt(parser.nextText()));
-                    } else if ("buffer_size".equals(tagName)) {
-                        config.setBufferSizeBytes(Integer.parseInt(parser.nextText()));
-                    } else if ("log_dir".equals(tagName)) {
-                        config.setLogDir(parser.nextText());
-                    } else if ("log_period".equals(tagName)) {
-                        config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
-                    } else if ("filtering_rules".equals(tagName)) {
-                        parseFilterBlock(parser, config);
-                    }
-                }
-                eventType = parser.next();
+            // 首先尝试从数据库加载
+            XcLoggerConfig config = loadFromDatabase(context);
+            if (config != null) {
+                currentConfig = config;
+                Log.i(TAG, "Config loaded from database");
+                return config;
             }
-            parser.close();
 
-            Log.i(TAG, "XML config parsed successfully: " +
-                    "total_size=" + config.getTotalSizeGb() + "GB, " +
-                    "file_size=" + config.getFileSizeMb() + "MB, " +
-                    "log_dir=" + config.getLogDir());
+            // 如果数据库中没有配置，从XML文件加载
+            config = loadFromXml(context);
+            if (config != null) {
+                currentConfig = config;
+                // 保存到数据库
+                XcLoggerDatabase db = new XcLoggerDatabase(context);
+                db.saveConfig(config);
+                Log.i(TAG, "Config loaded from XML and saved to database");
+                return config;
+            }
 
-            return config;
+            Log.e(TAG, "Failed to load config from both database and XML");
+            return null;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to parse XML config", e);
+            Log.e(TAG, "Error loading config", e);
             return null;
         }
     }
 
     /**
-     * 解析过滤规则配置
-     * @param parser XML解析器
-     * @param config 配置对象
+     * 替换当前配置
+     * @param config 新配置
      */
-    private void parseFilterBlock(XmlResourceParser parser, XcLoggerConfig config) {
+    public void replaceWith(XcLoggerConfig config) {
+        this.currentConfig = config;
+        Log.i(TAG, "Config replaced with new configuration");
+    }
+
+    /**
+     * 获取当前配置
+     * @return 当前配置对象
+     */
+    public XcLoggerConfig getCurrentConfig() {
+        return currentConfig;
+    }
+
+    /**
+     * 更新配置并保存到数据库
+     * @param context Android上下文
+     * @param config 新配置
+     */
+    public void updateConfig(Context context, XcLoggerConfig config) {
         try {
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+            db.saveConfig(config);
+            this.currentConfig = config;
+            Log.i(TAG, "Config updated and saved to database");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to update config", e);
+        }
+    }
+
+    /**
+     * 从数据库加载配置
+     * @param context Android上下文
+     * @return 配置对象
+     */
+    private XcLoggerConfig loadFromDatabase(Context context) {
+        try {
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+            return db.loadConfig();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load config from database", e);
+            return null;
+        }
+    }
+
+    /**
+     * 从XML文件加载配置
+     * @param context Android上下文
+     * @return 配置对象
+     */
+    private XcLoggerConfig loadFromXml(Context context) {
+        try {
+            InputStream inputStream = context.getAssets().open("default_config.xml");
+            XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
+            XmlPullParser parser = factory.newPullParser();
+            parser.setInput(inputStream, "UTF-8");
+
+            XcLoggerConfig config = new XcLoggerConfig();
             int eventType = parser.getEventType();
-            while (eventType != XmlResourceParser.END_DOCUMENT) {
-                if (eventType == XmlResourceParser.START_TAG) {
+
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
                     String tagName = parser.getName();
-                    if ("tag".equals(tagName)) {
-                        config.setFilterTag(parser.nextText());
-                    } else if ("level".equals(tagName)) {
-                        config.setFilterLevel(parser.nextText());
-                    } else if ("package_name".equals(tagName)) {
-                        config.setFilterPackage(parser.nextText());
+                    switch (tagName) {
+                        case "total_size_gb":
+                            config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
+                            break;
+                        case "file_size_mb":
+                            config.setFileSizeMb(Integer.parseInt(parser.nextText()));
+                            break;
+                        case "buffer_size_bytes":
+                            config.setBufferSizeBytes(Integer.parseInt(parser.nextText()));
+                            break;
+                        case "log_dir":
+                            config.setLogDir(parser.nextText());
+                            break;
+                        case "log_period_hours":
+                            config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
+                            break;
+                        case "filter_tag":
+                            config.setFilterTag(parser.nextText());
+                            break;
+                        case "filter_level":
+                            config.setFilterLevel(parser.nextText());
+                            break;
+                        case "filter_package":
+                            config.setFilterPackage(parser.nextText());
+                            break;
                     }
-                } else if (eventType == XmlResourceParser.END_TAG && "filtering_rules".equals(parser.getName())) {
-                    break;
                 }
                 eventType = parser.next();
             }
+
+            inputStream.close();
+            Log.i(TAG, "Config loaded from XML file");
+            return config;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to parse filter rules, using defaults", e);
-            // 使用默认值
-            config.setFilterTag("all");
-            config.setFilterLevel("all");
-            config.setFilterPackage("all");
+            Log.e(TAG, "Failed to load config from XML", e);
+            return null;
         }
     }
 }

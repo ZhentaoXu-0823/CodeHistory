@@ -15,81 +15,127 @@ import androidx.core.app.NotificationCompat;
 
 import com.xcheng.xclogger.MainActivity;
 import com.xcheng.xclogger.R;
-import com.xcheng.xclogger.filemanager.FileManager;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.ProcessController;
-import com.xcheng.xclogger.recorder.SystemLogCatcher;
-import com.xcheng.xclogger.util.XcLoggerConfig;
-import com.xcheng.xclogger.util.XcLoggerDatabase;
+import com.xcheng.xclogger.util.DatabaseMigration;
 
 /**
- * LogCaptureService - 前台日志捕获服务
+ * LogCaptureService - 日志捕获服务，负责在后台持续捕获系统日志
  *
  * 功能方法：
- * - onCreate() - 服务创建，初始化组件
- * - onStartCommand() - 启动服务，开始日志捕获
- * - onDestroy() - 服务销毁，清理资源
- * - onBind() - 绑定服务接口
- * - createNotificationChannel() - 创建通知渠道
- * - createNotification() - 创建前台通知
- * - startLogCapture() - 启动日志捕获
+ * - onCreate() - 服务创建时初始化
+ * - onStartCommand() - 服务启动命令处理
+ * - onDestroy() - 服务销毁时清理
+ * - startLogCapture() - 开始日志捕获
  * - stopLogCapture() - 停止日志捕获
- * - checkServiceStatus() - 检查服务状态
+ * - createNotification() - 创建前台通知
+ * - createNotificationChannel() - 创建通知渠道
  */
 public class LogCaptureService extends Service {
     private static final String TAG = "LogCaptureService";
-    private static final String CHANNEL_ID = "XcLoggerChannel";
-    private static final int NOTIFICATION_ID = 1001;
+    private static final String CHANNEL_ID = "LogCaptureServiceChannel";
+    private static final int NOTIFICATION_ID = 1;
 
     private ProcessController processController;
-    private XcLoggerDatabase database;
-    private XcLoggerConfig config;
-    private boolean isServiceRunning = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
         Log.i(TAG, "LogCaptureService created");
 
-        // 初始化组件
-        processController = ProcessController.getInstance(this);
-        database = new XcLoggerDatabase(this);
-        config = ConfigLoader.current();
+        // 执行数据库迁移
+        DatabaseMigration.migrateIfNeeded(this);
 
-        // 创建通知渠道
-        createNotificationChannel();
+        // 初始化ConfigLoader单例
+        ConfigLoader.getInstance().load(this);
+
+        // 初始化ProcessController
+        processController = ProcessController.getInstance(this);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "LogCaptureService started");
 
-        // 检查数据库状态
-        if (!checkServiceStatus()) {
-            Log.w(TAG, "Service should not be running, stopping");
-            stopSelf();
-            return START_NOT_STICKY;
-        }
-
         // 创建前台通知
-        startForeground(NOTIFICATION_ID, createNotification());
+        createNotification();
 
-        // 启动日志捕获
+        // 开始日志捕获
         startLogCapture();
 
+        // 返回START_STICKY确保服务被系统杀死后重启
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
-        Log.i(TAG, "LogCaptureService destroyed");
-        stopLogCapture();
         super.onDestroy();
+        Log.i(TAG, "LogCaptureService destroyed");
+
+        // 停止日志捕获
+        stopLogCapture();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    /**
+     * 开始日志捕获
+     */
+    private void startLogCapture() {
+        try {
+            if (processController != null) {
+                processController.startLogging();
+                Log.i(TAG, "Log capture started");
+            } else {
+                Log.e(TAG, "ProcessController is null, cannot start log capture");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start log capture", e);
+        }
+    }
+
+    /**
+     * 停止日志捕获
+     */
+    private void stopLogCapture() {
+        try {
+            if (processController != null) {
+                processController.stopLogging();
+                Log.i(TAG, "Log capture stopped");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to stop log capture", e);
+        }
+    }
+
+    /**
+     * 创建前台通知
+     */
+    private void createNotification() {
+        // 创建通知渠道（Android 8.0及以上需要）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            createNotificationChannel();
+        }
+
+        // 创建点击通知时启动MainActivity的Intent
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        // 创建通知
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("XCLogger")
+                .setContentText("XCLogger is running")
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .build();
+
+        // 启动前台服务
+        startForeground(NOTIFICATION_ID, notification);
     }
 
     /**
@@ -99,90 +145,16 @@ public class LogCaptureService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "XcLogger Service",
+                    "Log Capture Service",
                     NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("XcLogger log capture service");
+            channel.setDescription("Channel for Log Capture Service");
+            channel.setShowBadge(false);
 
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
+            NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
             }
-        }
-    }
-
-    /**
-     * 创建前台通知
-     */
-    private Notification createNotification() {
-        Intent intent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("XCLogger")
-                .setContentText("XCLogger is running")
-                .setSmallIcon(R.drawable.xcloggericon)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build();
-    }
-
-    /**
-     * 启动日志捕获
-     */
-    private void startLogCapture() {
-        try {
-            if (isServiceRunning) {
-                Log.w(TAG, "Log capture already running");
-                return;
-            }
-
-            // 使用ProcessController启动日志捕获
-            processController.startLogging();
-            isServiceRunning = true;
-
-            Log.i(TAG, "Log capture started successfully");
-
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start log capture", e);
-            recordError("Service start failed: " + e.getMessage());
-            stopSelf();
-        }
-    }
-
-    /**
-     * 停止日志捕获
-     */
-    private void stopLogCapture() {
-        try {
-            if (isServiceRunning) {
-                processController.stopLogging();
-                isServiceRunning = false;
-                Log.i(TAG, "Log capture stopped");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error stopping log capture", e);
-        }
-    }
-
-    /**
-     * 检查服务状态
-     */
-    private boolean checkServiceStatus() {
-        return database.loadRunningState();
-    }
-
-    /**
-     * 记录错误信息
-     */
-    private void recordError(String error) {
-        try {
-            processController.recordOperationHistory("Error: " + error);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to record error", e);
         }
     }
 }

@@ -1,14 +1,9 @@
 package com.xcheng.xclogger.ui;
 
 import android.os.Bundle;
-import android.text.InputType;
-import android.view.Gravity;
+import android.widget.Button;
 import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.xcheng.xclogger.R;
@@ -18,295 +13,206 @@ import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 /**
- * XcLoggerConfigActivity - 配置界面，提供参数编辑功能
+ * XcLoggerConfigActivity - 配置界面控制器，提供详细的参数配置功能
  *
  * 功能方法：
- * - onCreate(Bundle) - 初始化配置界面
- * - checkLogRunningState() - 检查日志运行状态并禁用所有配置编辑
- * - addRow(LinearLayout, String, String) - 创建普通标签+输入行
- * - addRowWithUnit(LinearLayout, String, String, String, boolean) - 创建带单位的标签+输入行
- * - save() - 保存所有配置到数据库并更新全局缓存
- * - safeInt(String) - 安全字符串转整数
+ * - onCreate() - 初始化UI组件和配置
+ * - onResume() - 页面恢复时刷新配置和UI
+ * - checkLogRunningState() - 检查日志运行状态
+ * - setAllInputsEnabled(boolean) - 设置所有输入控件的启用状态
+ * - save() - 保存配置到数据库
  * - buildConfigDetailsString(XcLoggerConfig) - 构建配置详情字符串
- * - setAllInputsEnabled(boolean) - 设置所有输入框的启用状态
+ * - initViews() - 初始化UI组件
+ * - initData() - 初始化数据
  */
 public class XcLoggerConfigActivity extends AppCompatActivity {
-    private EditText etTotal;
-    private EditText etFile;
-    private EditText etBuffer;
-    private EditText etDir;
-    private EditText etPeriod;
-    private EditText etTag;
-    private EditText etLevel;
-    private EditText etPkg;
-    private XcLoggerConfig cfg;
+    private EditText etTotalSize, etFileSize, etBufferSize, etLogDir, etLogPeriod, etFilterTag, etFilterLevel, etFilterPackage;
+    private Button btnSave;
+    private boolean isLogRunning = false;
+    private XcLoggerConfig config;
     private XcLoggerDatabase database;
     private ProcessController processController;
-    private TextView btnSave;
-    private boolean isLogRunning = false;
 
-    /**
-     * 初始化配置界面
-     * @param savedInstanceState 保存的实例状态
-     */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_xclogger_config);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int pad16 = (int) (getResources().getDisplayMetrics().density * 16);
-        root.setPadding(pad16, pad16, pad16, pad16);
+        // 初始化UI组件
+        initViews();
 
-// Top bar with title and Save (fixed) - 3:2 height ratio
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setBackgroundResource(R.drawable.bg_rounded_gray);
-        int topPad = (int) (getResources().getDisplayMetrics().density * 24); // 3:2 ratio padding
-        top.setPadding(topPad, topPad, topPad, topPad);
-        LinearLayout.LayoutParams lpTop = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lpTop.bottomMargin = pad16;
-        root.addView(top, lpTop);
+        // 初始化数据
+        initData();
 
-        TextView title = new TextView(this);
-        title.setText("XcLogger Config");
-        title.setTextSize(18); // Larger text for top bar
-        LinearLayout.LayoutParams lpTitle = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        top.addView(title, lpTitle);
+        // 检查日志运行状态
+        checkLogRunningState();
+    }
 
-        btnSave = new TextView(this);
-        btnSave.setText("Save");
-        btnSave.setTextColor(0xFF1976D2);
-        btnSave.setTextSize(16);
-        btnSave.setGravity(Gravity.END);
-        top.addView(btnSave);
+    @Override
+    protected void onResume() {
+        super.onResume();
 
-// Scroll area for details
-        ScrollView scroll = new ScrollView(this);
-        root.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(details, new ScrollView.LayoutParams(ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
-
-        cfg = new ConfigLoader().load(this);
-        database = new XcLoggerDatabase(this);
-        processController = ProcessController.getInstance(this);
-
-// With unit labels
-        etTotal = addRowWithUnit(details, "total_size", String.valueOf(cfg.getTotalSizeGb()), "GB", true);
-        etFile = addRowWithUnit(details, "file_size", String.valueOf(cfg.getFileSizeMb()), "MB", true);
-        etBuffer = addRowWithUnit(details, "buffer_size", String.valueOf(cfg.getBufferSizeBytes()), "B", true);
-        etPeriod = addRowWithUnit(details, "log_period", String.valueOf(cfg.getLogPeriodHours()), "Hour", true);
-
-// Plain labels
-        etDir = addRow(details, "log_dir", cfg.getLogDir());
-        etTag = addRow(details, "filter_tag", cfg.getFilterTag());
-        etLevel = addRow(details, "filter_level", cfg.getFilterLevel());
-        etPkg = addRow(details, "filter_package", cfg.getFilterPackage());
-
-// Check if log is running and disable all editing
+        // 重新检查日志运行状态
         checkLogRunningState();
 
-        btnSave.setOnClickListener(v -> {
-            if (!isLogRunning) {
-                save();
-                setResult(RESULT_OK);
-                finish();
-            } else {
-                Toast.makeText(this, "Log is running, please stop log first before modifying configuration", Toast.LENGTH_LONG).show();
-            }
-        });
-
-        setContentView(root);
+        // 刷新配置显示
+        if (config != null) {
+            etTotalSize.setText(String.valueOf(config.getTotalSizeGb()));
+            etFileSize.setText(String.valueOf(config.getFileSizeMb()));
+            etBufferSize.setText(String.valueOf(config.getBufferSizeBytes()));
+            etLogDir.setText(config.getLogDir());
+            etLogPeriod.setText(String.valueOf(config.getLogPeriodHours()));
+            etFilterTag.setText(config.getFilterTag());
+            etFilterLevel.setText(config.getFilterLevel());
+            etFilterPackage.setText(config.getFilterPackage());
+        }
     }
 
     /**
-     * 检查日志运行状态并禁用所有配置编辑
+     * 初始化UI组件
+     */
+    private void initViews() {
+        etTotalSize = findViewById(R.id.et_total_size);
+        etFileSize = findViewById(R.id.et_file_size);
+        etBufferSize = findViewById(R.id.et_buffer_size);
+        etLogDir = findViewById(R.id.et_log_dir);
+        etLogPeriod = findViewById(R.id.et_log_period);
+        etFilterTag = findViewById(R.id.et_filter_tag);
+        etFilterLevel = findViewById(R.id.et_filter_level);
+        etFilterPackage = findViewById(R.id.et_filter_package);
+        btnSave = findViewById(R.id.btn_save);
+
+        btnSave.setOnClickListener(v -> save());
+    }
+
+    /**
+     * 初始化数据
+     */
+    private void initData() {
+        database = new XcLoggerDatabase(this);
+        processController = ProcessController.getInstance(this);
+        config = ConfigLoader.getInstance().getCurrentConfig();
+    }
+
+    /**
+     * 检查日志运行状态
      */
     private void checkLogRunningState() {
         isLogRunning = database.loadRunningState();
+        setAllInputsEnabled(!isLogRunning);
+
         if (isLogRunning) {
-            // 禁用所有输入框
-            setAllInputsEnabled(false);
-            btnSave.setTextColor(0xFF999999);
-            btnSave.setText("Save");
-
-            // 显示提示信息
-            Toast.makeText(this, "Log is running, all configuration is disabled", Toast.LENGTH_LONG).show();
-        } else {
-            // 启用所有输入框
-            setAllInputsEnabled(true);
-
-            // 启用保存按钮
-            btnSave.setEnabled(true);
-            btnSave.setTextColor(0xFF1976D2);
-            btnSave.setText("Save");
+            Toast.makeText(this, "Log is running, configuration modification is disabled", Toast.LENGTH_LONG).show();
         }
     }
 
     /**
-     * 设置所有输入框的启用状态
+     * 设置所有输入控件的启用状态
      * @param enabled 是否启用
      */
     private void setAllInputsEnabled(boolean enabled) {
-        etTotal.setEnabled(enabled);
-        etFile.setEnabled(enabled);
-        etBuffer.setEnabled(enabled);
-        etDir.setEnabled(enabled);
-        etPeriod.setEnabled(enabled);
-        etTag.setEnabled(enabled);
-        etLevel.setEnabled(enabled);
-        etPkg.setEnabled(enabled);
+        etTotalSize.setEnabled(enabled);
+        etFileSize.setEnabled(enabled);
+        etBufferSize.setEnabled(enabled);
+        etLogDir.setEnabled(enabled);
+        etLogPeriod.setEnabled(enabled);
+        etFilterTag.setEnabled(enabled);
+        etFilterLevel.setEnabled(enabled);
+        etFilterPackage.setEnabled(enabled);
+        btnSave.setEnabled(enabled);
 
         if (!enabled) {
-            // 设置禁用状态的提示文本
-            etDir.setHint("Log is running, please stop log first before modifying file path");
-            etDir.setHintTextColor(0xFF999999);
-
-            // 为其他输入框也设置提示
-            etTotal.setHint("Log is running, configuration disabled");
-            etFile.setHint("Log is running, configuration disabled");
-            etBuffer.setHint("Log is running, configuration disabled");
-            etPeriod.setHint("Log is running, configuration disabled");
-            etTag.setHint("Log is running, configuration disabled");
-            etLevel.setHint("Log is running, configuration disabled");
-            etPkg.setHint("Log is running, configuration disabled");
-
-            // 设置提示文本颜色
-            etTotal.setHintTextColor(0xFF999999);
-            etFile.setHintTextColor(0xFF999999);
-            etBuffer.setHintTextColor(0xFF999999);
-            etPeriod.setHintTextColor(0xFF999999);
-            etTag.setHintTextColor(0xFF999999);
-            etLevel.setHintTextColor(0xFF999999);
-            etPkg.setHintTextColor(0xFF999999);
+            etTotalSize.setHint("Log is running, modification disabled");
+            etFileSize.setHint("Log is running, modification disabled");
+            etBufferSize.setHint("Log is running, modification disabled");
+            etLogDir.setHint("Log is running, modification disabled");
+            etLogPeriod.setHint("Log is running, modification disabled");
+            etFilterTag.setHint("Log is running, modification disabled");
+            etFilterLevel.setHint("Log is running, modification disabled");
+            etFilterPackage.setHint("Log is running, modification disabled");
         } else {
-            // 清除提示文本
-            etTotal.setHint("");
-            etFile.setHint("");
-            etBuffer.setHint("");
-            etDir.setHint("");
-            etPeriod.setHint("");
-            etTag.setHint("");
-            etLevel.setHint("");
-            etPkg.setHint("");
+            etTotalSize.setHint("Total size in GB");
+            etFileSize.setHint("File size in MB");
+            etBufferSize.setHint("Buffer size in bytes");
+            etLogDir.setHint("Log directory path");
+            etLogPeriod.setHint("Log period in hours");
+            etFilterTag.setHint("Filter tag");
+            etFilterLevel.setHint("Filter level");
+            etFilterPackage.setHint("Filter package");
         }
     }
 
     /**
-     * 创建普通标签+输入行
-     * @param parent 父容器
-     * @param label 标签文本
-     * @param value 初始值
-     * @return EditText控件
-     */
-    private EditText addRow(LinearLayout parent, String label, String value) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setBackgroundResource(R.drawable.bg_rounded_gray);
-        int pad = (int) (getResources().getDisplayMetrics().density * 16); // 2:3 ratio padding
-        row.setPadding(pad, pad, pad, pad);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = pad;
-        parent.addView(row, lp);
-
-        TextView tv = new TextView(this);
-        tv.setText(label);
-        LinearLayout.LayoutParams lpTv = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        row.addView(tv, lpTv);
-
-        EditText et = new EditText(this);
-        et.setSingleLine(true);
-        et.setText(value);
-        row.addView(et, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f));
-        return et;
-    }
-
-    /**
-     * 创建带单位的标签+输入行
-     * @param parent 父容器
-     * @param label 标签文本
-     * @param value 初始值
-     * @param unit 单位文本
-     * @param numeric 是否为数字输入
-     * @return EditText控件
-     */
-    private EditText addRowWithUnit(LinearLayout parent, String label, String value, String unit, boolean numeric) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setBackgroundResource(R.drawable.bg_rounded_gray);
-        int pad = (int) (getResources().getDisplayMetrics().density * 16); // 2:3 ratio padding
-        row.setPadding(pad, pad, pad, pad);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = pad;
-        parent.addView(row, lp);
-
-        TextView tv = new TextView(this);
-        tv.setText(label);
-        LinearLayout.LayoutParams lpTv = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        row.addView(tv, lpTv);
-
-        EditText et = new EditText(this);
-        et.setSingleLine(true);
-        if (numeric) et.setInputType(InputType.TYPE_CLASS_NUMBER);
-        et.setText(value);
-        row.addView(et, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.5f));
-
-        TextView unitView = new TextView(this);
-        unitView.setText(unit);
-        row.addView(unitView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.5f));
-        return et;
-    }
-
-    /**
-     * 保存所有配置到数据库并更新全局缓存
+     * 保存配置
      */
     private void save() {
-        // 再次检查运行状态（双重保险）
         if (isLogRunning) {
             Toast.makeText(this, "Log is running, please stop log first before modifying configuration", Toast.LENGTH_LONG).show();
             return;
         }
 
-        // 保存配置
-        cfg.setTotalSizeGb(safeInt(etTotal.getText().toString()));
-        cfg.setFileSizeMb(safeInt(etFile.getText().toString()));
-        cfg.setBufferSizeBytes(safeInt(etBuffer.getText().toString()));
-        cfg.setLogDir(etDir.getText().toString());
-        cfg.setLogPeriodHours(safeInt(etPeriod.getText().toString()));
-        cfg.setFilterTag(etTag.getText().toString());
-        cfg.setFilterLevel(etLevel.getText().toString());
-        cfg.setFilterPackage(etPkg.getText().toString());
-        new XcLoggerDatabase(this).saveConfig(cfg);
-        ConfigLoader.replaceWith(cfg);
+        try {
+            // 获取旧配置用于记录变更
+            XcLoggerConfig oldConfig = new XcLoggerConfig();
+            if (config != null) {
+                oldConfig.setTotalSizeGb(config.getTotalSizeGb());
+                oldConfig.setFileSizeMb(config.getFileSizeMb());
+                oldConfig.setBufferSizeBytes(config.getBufferSizeBytes());
+                oldConfig.setLogDir(config.getLogDir());
+                oldConfig.setLogPeriodHours(config.getLogPeriodHours());
+                oldConfig.setFilterTag(config.getFilterTag());
+                oldConfig.setFilterLevel(config.getFilterLevel());
+                oldConfig.setFilterPackage(config.getFilterPackage());
+            }
 
-        // 记录配置修改历史
-        String configDetails = buildConfigDetailsString(cfg);
-        processController.getFileManager().appendConfigChangeHistory(configDetails);
+            // 创建新配置
+            XcLoggerConfig newConfig = new XcLoggerConfig();
+            newConfig.setTotalSizeGb(Integer.parseInt(etTotalSize.getText().toString()));
+            newConfig.setFileSizeMb(Integer.parseInt(etFileSize.getText().toString()));
+            newConfig.setBufferSizeBytes(Integer.parseInt(etBufferSize.getText().toString()));
+            newConfig.setLogDir(etLogDir.getText().toString());
+            newConfig.setLogPeriodHours(Integer.parseInt(etLogPeriod.getText().toString()));
+            newConfig.setFilterTag(etFilterTag.getText().toString());
+            newConfig.setFilterLevel(etFilterLevel.getText().toString());
+            newConfig.setFilterPackage(etFilterPackage.getText().toString());
+
+            // 保存到数据库
+            ConfigLoader.getInstance().updateConfig(this, newConfig);
+
+            // 更新FileManager路径（如果log_dir发生变化）
+            if (!oldConfig.getLogDir().equals(newConfig.getLogDir())) {
+                processController.getFileManager().updatePaths();
+            }
+
+            // 记录配置变更
+            String configDetails = buildConfigDetailsString(newConfig);
+            processController.getFileManager().appendConfigChangeHistory(configDetails);
+
+            Toast.makeText(this, "Configuration saved successfully", Toast.LENGTH_SHORT).show();
+            finish();
+
+        } catch (NumberFormatException e) {
+            Toast.makeText(this, "Invalid number format, please check your input", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Failed to save configuration: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     /**
-     * 构建配置详情字符串（键-值格式）
+     * 构建配置详情字符串
      * @param config 配置对象
      * @return 配置详情字符串
      */
     private String buildConfigDetailsString(XcLoggerConfig config) {
         StringBuilder sb = new StringBuilder();
-        sb.append("total_size-").append(config.getTotalSizeGb()).append("; ");
-        sb.append("file_size-").append(config.getFileSizeMb()).append("; ");
-        sb.append("buffer_size-").append(config.getBufferSizeBytes()).append("; ");
-        sb.append("log_dir-").append(config.getLogDir()).append("; ");
-        sb.append("log_period-").append(config.getLogPeriodHours()).append("; ");
-        sb.append("filter_tag-").append(config.getFilterTag()).append("; ");
-        sb.append("filter_level-").append(config.getFilterLevel()).append("; ");
-        sb.append("filter_package-").append(config.getFilterPackage());
+        sb.append("total_size_gb=").append(config.getTotalSizeGb()).append(" GB");
+        sb.append("; file_size_mb=").append(config.getFileSizeMb()).append(" MB");
+        sb.append("; buffer_size_bytes=").append(config.getBufferSizeBytes()).append(" bytes");
+        sb.append("; log_dir=").append(config.getLogDir());
+        sb.append("; log_period_hours=").append(config.getLogPeriodHours()).append(" hours");
+        sb.append("; filter_tag=").append(config.getFilterTag());
+        sb.append("; filter_level=").append(config.getFilterLevel());
+        sb.append("; filter_package=").append(config.getFilterPackage());
         return sb.toString();
     }
-
-    /**
-     * 安全字符串转整数
-     * @param s 字符串
-     * @return 整数（解析失败返回0）
-     */
-    private int safeInt(String s) { try { return Integer.parseInt(s.trim()); } catch (Exception e) { return 0; } }
 }

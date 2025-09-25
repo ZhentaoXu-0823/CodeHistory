@@ -6,6 +6,7 @@ import android.util.Log;
 
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.util.XcLoggerConfig;
+import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -24,6 +25,7 @@ import java.util.UUID;
  *
  * 功能方法：
  * - FileManager(Context) - 构造函数，初始化文件管理器
+ * - updatePaths() - 更新文件路径
  * - ensureBaseDir() - 确保基础目录存在
  * - createNewMainLogFile() - 创建新的主日志文件
  * - appendToMainLog(byte[], int) - 追加数据到主日志文件
@@ -39,7 +41,7 @@ import java.util.UUID;
  * - getSequenceNumber() - 获取序列号
  * - shouldRotateFile(int) - 检查是否应该轮转文件
  * - getCurrentMainLogFile() - 获取当前主日志文件
- * - getBaseDir() - 获取基础目录
+ * - getMainLogDir() - 获取主日志目录
  * - getOperationHistoryFile() - 获取操作历史文件
  */
 public class FileManager {
@@ -52,7 +54,8 @@ public class FileManager {
     private static final long MIN_FILE_LIFETIME_MS = 10000; // 最小文件生存时间：10秒
 
     private Context context;
-    private File baseDir;
+    private File operationHistoryDir;  // 操作历史文件目录（固定不变）
+    private File mainLogDir;           // 主日志文件目录（可修改）
     private File currentMainLogFile;
     private File operationHistoryFile;
     private XcLoggerConfig config;
@@ -66,13 +69,13 @@ public class FileManager {
      */
     public FileManager(Context ctx) {
         this.context = ctx;
-        this.config = ConfigLoader.current();
+        this.config = ConfigLoader.getInstance().getCurrentConfig();
 
         // 如果配置为null，尝试重新加载
         if (this.config == null) {
             Log.w(TAG, "Config is null, attempting to reload");
-            ConfigLoader loader = new ConfigLoader();
-            this.config = loader.load(ctx);
+            ConfigLoader.getInstance().load(ctx);
+            this.config = ConfigLoader.getInstance().getCurrentConfig();
         }
 
         // 如果仍然为null，使用默认配置
@@ -86,23 +89,78 @@ public class FileManager {
             this.config.setLogPeriodHours(168);
         }
 
-        this.baseDir = new File(this.config.getLogDir());
-
-        // 操作历史文件保存在外部存储目录下
-        this.operationHistoryFile = new File(this.baseDir, OPERATION_HISTORY_FILE);
-
-        // 添加详细的路径日志
-        Log.i(TAG, "FileManager constructor - baseDir = " + this.baseDir.getAbsolutePath());
-        Log.i(TAG, "FileManager constructor - operationHistoryFile path = " + operationHistoryFile.getAbsolutePath());
-        Log.i(TAG, "FileManager constructor - operationHistoryFile exists = " + operationHistoryFile.exists());
-        Log.i(TAG, "FileManager constructor - operationHistoryFile parent = " + operationHistoryFile.getParent());
-        Log.i(TAG, "FileManager constructor - operationHistoryFile parent exists = " + (operationHistoryFile.getParentFile() != null && operationHistoryFile.getParentFile().exists()));
+        // 初始化路径
+        initializePaths();
 
         this.currentDate = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
         this.currentSequenceNumber = getSequenceNumber();
 
-        Log.i(TAG, "FileManager initialized with log_dir=" + this.config.getLogDir() +
-                ", file_size=" + this.config.getFileSizeMb() + "MB, current_sequence=" + this.currentSequenceNumber);
+        Log.i(TAG, "FileManager initialized with operation_history_dir=" + operationHistoryDir.getAbsolutePath() +
+                ", main_log_dir=" + mainLogDir.getAbsolutePath() + ", current_sequence=" + this.currentSequenceNumber);
+    }
+
+    /**
+     * 初始化文件路径
+     */
+    private void initializePaths() {
+        try {
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+
+            // 获取操作历史文件路径（固定不变）
+            String operationHistoryPath = db.getOperationHistoryPath();
+            if (operationHistoryPath == null || operationHistoryPath.isEmpty()) {
+                // 如果数据库中没有操作历史文件路径，使用默认路径
+                operationHistoryPath = config.getLogDir() + "/" + OPERATION_HISTORY_FILE;
+                db.setOperationHistoryPath(operationHistoryPath);
+                Log.i(TAG, "Set default operation history path: " + operationHistoryPath);
+            }
+
+            this.operationHistoryDir = new File(operationHistoryPath).getParentFile();
+            this.operationHistoryFile = new File(operationHistoryPath);
+
+            // 获取主日志文件目录（可修改）
+            this.mainLogDir = new File(config.getLogDir());
+
+            Log.i(TAG, "Paths initialized - operation_history_dir: " + operationHistoryDir.getAbsolutePath() +
+                    ", main_log_dir: " + mainLogDir.getAbsolutePath());
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to initialize paths", e);
+            // 使用默认路径
+            this.operationHistoryDir = new File(config.getLogDir());
+            this.mainLogDir = new File(config.getLogDir());
+            this.operationHistoryFile = new File(operationHistoryDir, OPERATION_HISTORY_FILE);
+        }
+    }
+
+    /**
+     * 更新文件路径
+     */
+    public void updatePaths() {
+        try {
+            // 重新获取配置
+            this.config = ConfigLoader.getInstance().getCurrentConfig();
+            if (this.config == null) {
+                Log.e(TAG, "Config is null, cannot update paths");
+                return;
+            }
+
+            // 更新主日志文件目录
+            File newMainLogDir = new File(config.getLogDir());
+            if (!newMainLogDir.equals(mainLogDir)) {
+                String oldPath = mainLogDir.getAbsolutePath();
+                String newPath = newMainLogDir.getAbsolutePath();
+
+                this.mainLogDir = newMainLogDir;
+                this.currentSequenceNumber = getSequenceNumber(); // 重新计算序列号
+
+                // 记录路径更新操作
+                appendOperationHistory("Config updated: log_dir changed from " + oldPath + " to " + newPath);
+
+                Log.i(TAG, "Main log directory updated from " + oldPath + " to " + newPath);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to update paths", e);
+        }
     }
 
     /**
@@ -111,18 +169,27 @@ public class FileManager {
      */
     public synchronized boolean ensureBaseDir() {
         try {
-            if (!baseDir.exists()) {
-                boolean created = baseDir.mkdirs();
-                Log.i(TAG, "Base directory created: " + baseDir.getPath() + ", success=" + created);
+            // 确保操作历史文件目录存在
+            if (!operationHistoryDir.exists()) {
+                boolean created = operationHistoryDir.mkdirs();
+                Log.i(TAG, "Operation history directory created: " + operationHistoryDir.getPath() + ", success=" + created);
                 if (created) {
-                    // 记录目录创建操作
-                    appendOperationHistory("Directory created: " + baseDir.getAbsolutePath());
+                    appendOperationHistory("Directory created: " + operationHistoryDir.getAbsolutePath());
                 }
-                return created;
             }
+
+            // 确保主日志文件目录存在
+            if (!mainLogDir.exists()) {
+                boolean created = mainLogDir.mkdirs();
+                Log.i(TAG, "Main log directory created: " + mainLogDir.getPath() + ", success=" + created);
+                if (created) {
+                    appendOperationHistory("Directory created: " + mainLogDir.getAbsolutePath());
+                }
+            }
+
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to create base directory", e);
+            Log.e(TAG, "Failed to create directories", e);
             return false;
         }
     }
@@ -133,10 +200,17 @@ public class FileManager {
      */
     private boolean ensureOperationHistoryDir() {
         try {
-            // 操作历史文件现在在基础目录下，直接确保基础目录存在
-            return ensureBaseDir();
+            if (!operationHistoryDir.exists()) {
+                boolean created = operationHistoryDir.mkdirs();
+                Log.i(TAG, "Operation history directory created: " + operationHistoryDir.getPath() + ", success=" + created);
+                if (created) {
+                    appendOperationHistory("Directory created: " + operationHistoryDir.getAbsolutePath());
+                }
+                return created;
+            }
+            return true;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to ensure operation history directory", e);
+            Log.e(TAG, "Failed to create operation history directory", e);
             return false;
         }
     }
@@ -148,7 +222,7 @@ public class FileManager {
     public synchronized boolean createNewMainLogFile() {
         try {
             if (!ensureBaseDir()) {
-                Log.e(TAG, "Failed to ensure base directory");
+                Log.e(TAG, "Failed to ensure directories");
                 return false;
             }
 
@@ -157,20 +231,20 @@ public class FileManager {
 
             // 生成文件名
             String fileName = generateFileName();
-            currentMainLogFile = new File(baseDir, fileName);
+            currentMainLogFile = new File(mainLogDir, fileName);
 
             boolean created = currentMainLogFile.createNewFile();
             if (created) {
                 lastFileCreationTime = System.currentTimeMillis();
                 Log.i(TAG, "Created new log file: " + fileName);
                 // 记录文件创建操作
-                appendOperationHistory("Log file created: " + fileName + " (size: 0 bytes)");
+                appendOperationHistory("Log file created: " + currentMainLogFile.getAbsolutePath() + " (size: 0 bytes)");
                 // 更新序列号
                 currentSequenceNumber++;
             } else {
                 Log.w(TAG, "Failed to create log file: " + fileName);
                 // 记录文件创建失败操作
-                appendOperationHistory("Failed to create log file: " + fileName);
+                appendOperationHistory("Failed to create log file: " + currentMainLogFile.getAbsolutePath());
             }
             return created;
 
@@ -228,7 +302,7 @@ public class FileManager {
         Log.i(TAG, "appendOperationHistory - operationHistoryFile path: " + operationHistoryFile.getAbsolutePath());
 
         try {
-            // 确保基础目录存在
+            // 确保操作历史文件目录存在
             boolean dirEnsured = ensureOperationHistoryDir();
             Log.d(TAG, "appendOperationHistory - directory ensured: " + dirEnsured);
 
@@ -290,7 +364,7 @@ public class FileManager {
         Log.i(TAG, "appendConfigChangeHistory called with: " + configDetails);
 
         try {
-            // 确保基础目录存在
+            // 确保操作历史文件目录存在
             if (!ensureOperationHistoryDir()) {
                 Log.e(TAG, "appendConfigChangeHistory - failed to ensure directory");
                 return;
@@ -403,7 +477,7 @@ public class FileManager {
      */
     private boolean isStorageFull() {
         try {
-            StatFs stat = new StatFs(baseDir.getPath());
+            StatFs stat = new StatFs(mainLogDir.getPath());
             long availableBytes = stat.getAvailableBytes();
             long totalBytes = stat.getTotalBytes();
 
@@ -422,7 +496,7 @@ public class FileManager {
     private long getTotalLogSize() {
         try {
             long totalSize = 0;
-            File[] files = baseDir.listFiles();
+            File[] files = mainLogDir.listFiles();
             if (files != null) {
                 for (File file : files) {
                     if (file.isFile() && file.getName().startsWith(LOG_FILE_PREFIX)) {
@@ -444,7 +518,7 @@ public class FileManager {
     private void deleteFilesOlderThan(int hours) {
         try {
             long cutoffTime = System.currentTimeMillis() - (hours * 60 * 60 * 1000L);
-            File[] files = baseDir.listFiles();
+            File[] files = mainLogDir.listFiles();
             int deletedCount = 0;
 
             if (files != null) {
@@ -456,7 +530,7 @@ public class FileManager {
                                 deletedCount++;
                                 Log.i(TAG, "Deleted old file: " + file.getName());
                                 // 记录文件删除操作
-                                appendOperationHistory("Log file deleted (time limit): " + file.getName() + " (size: " + fileSize + " bytes)");
+                                appendOperationHistory("Log file deleted (time limit): " + file.getAbsolutePath() + " (size: " + fileSize + " bytes)");
                             }
                         }
                     }
@@ -483,7 +557,7 @@ public class FileManager {
                     deletedCount++;
                     Log.i(TAG, "Deleted oldest file: " + file.getName());
                     // 记录文件删除操作
-                    appendOperationHistory("Log file deleted (storage/size limit): " + file.getName() + " (size: " + fileSize + " bytes)");
+                    appendOperationHistory("Log file deleted (storage/size limit): " + file.getAbsolutePath() + " (size: " + fileSize + " bytes)");
                 }
             }
 
@@ -499,7 +573,7 @@ public class FileManager {
      */
     private List<File> getLogFilesSortedByTime() {
         List<File> logFiles = new ArrayList<>();
-        File[] files = baseDir.listFiles();
+        File[] files = mainLogDir.listFiles();
 
         if (files != null) {
             for (File file : files) {
@@ -553,7 +627,7 @@ public class FileManager {
                 return 1;
             }
 
-            File[] files = baseDir.listFiles();
+            File[] files = mainLogDir.listFiles();
             int maxSequence = 0;
 
             if (files != null) {
@@ -598,11 +672,11 @@ public class FileManager {
     }
 
     /**
-     * 获取基础目录
-     * @return 基础目录
+     * 获取主日志目录
+     * @return 主日志目录
      */
-    public File getBaseDir() {
-        return baseDir;
+    public File getMainLogDir() {
+        return mainLogDir;
     }
 
     /**

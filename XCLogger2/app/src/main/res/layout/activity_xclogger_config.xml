@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="XcLogger Configuration"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Total Size -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Total Size (GB)"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_total_size"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="number"
+            android:hint="Total size in GB"
+            android:layout_marginBottom="16dp" />
+
+        <!-- File Size -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="File Size (MB)"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_file_size"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="number"
+            android:hint="File size in MB"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Buffer Size -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Buffer Size (Bytes)"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_buffer_size"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="number"
+            android:hint="Buffer size in bytes"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Log Directory -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Log Directory"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_log_dir"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Log directory path"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Log Period -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Log Period (Hours)"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_log_period"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="number"
+            android:hint="Log period in hours"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Filter Tag -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Tag"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_tag"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Filter tag"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Filter Level -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Level"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_level"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Filter level"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Filter Package -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Package"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_package"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Filter package"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Save Button -->
+        <Button
+            android:id="@+id/btn_save"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Save Configuration"
+            android:textSize="16sp"
+            android:background="@drawable/bg_rounded_gray"
+            android:layout_marginTop="16dp" />
+
+    </LinearLayout>
+</ScrollView>
