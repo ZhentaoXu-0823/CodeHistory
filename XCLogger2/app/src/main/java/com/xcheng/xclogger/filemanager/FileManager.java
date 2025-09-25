@@ -27,7 +27,6 @@ import java.util.UUID;
  * - ensureBaseDir() - 确保基础目录存在
  * - createNewMainLogFile() - 创建新的主日志文件
  * - appendToMainLog(byte[], int) - 追加数据到主日志文件
- * - appendOperateHistory(String) - 追加操作历史记录
  * - appendOperationHistory(String) - 追加操作历史记录到A_OperationHistory.txt
  * - appendConfigChangeHistory(String) - 追加配置修改记录（键值对格式）
  * - checkAndCleanOldFiles() - 检查并清理过期文件
@@ -47,14 +46,14 @@ public class FileManager {
     private static final String TAG = "FileManager";
     private static final String LOG_FILE_PREFIX = "mainlog_";
     private static final String LOG_FILE_EXTENSION = ".txt";
+    private static final String OPERATION_HISTORY_FILE = "A_OperationHistory.txt";
     private static final int HASH_LENGTH = 6;
     private static final int SEQUENCE_LENGTH = 4;
-    private static final long MIN_FILE_LIFETIME_MS = 30000; // 最小文件生存时间：30秒
+    private static final long MIN_FILE_LIFETIME_MS = 10000; // 最小文件生存时间：10秒
 
     private Context context;
     private File baseDir;
     private File currentMainLogFile;
-    private File historyFile;
     private File operationHistoryFile;
     private XcLoggerConfig config;
     private String currentDate;
@@ -88,8 +87,17 @@ public class FileManager {
         }
 
         this.baseDir = new File(this.config.getLogDir());
-        this.historyFile = new File(this.baseDir, "XcLoggerOperateHistory.txt");
-        this.operationHistoryFile = new File(context.getFilesDir(), "A_OperationHistory.txt");
+
+        // 操作历史文件保存在外部存储目录下
+        this.operationHistoryFile = new File(this.baseDir, OPERATION_HISTORY_FILE);
+
+        // 添加详细的路径日志
+        Log.i(TAG, "FileManager constructor - baseDir = " + this.baseDir.getAbsolutePath());
+        Log.i(TAG, "FileManager constructor - operationHistoryFile path = " + operationHistoryFile.getAbsolutePath());
+        Log.i(TAG, "FileManager constructor - operationHistoryFile exists = " + operationHistoryFile.exists());
+        Log.i(TAG, "FileManager constructor - operationHistoryFile parent = " + operationHistoryFile.getParent());
+        Log.i(TAG, "FileManager constructor - operationHistoryFile parent exists = " + (operationHistoryFile.getParentFile() != null && operationHistoryFile.getParentFile().exists()));
+
         this.currentDate = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
         this.currentSequenceNumber = getSequenceNumber();
 
@@ -121,13 +129,10 @@ public class FileManager {
      */
     private boolean ensureOperationHistoryDir() {
         try {
-            File parentDir = operationHistoryFile.getParentFile();
-            if (parentDir != null && !parentDir.exists()) {
-                return parentDir.mkdirs();
-            }
-            return true;
+            // 操作历史文件现在在基础目录下，直接确保基础目录存在
+            return ensureBaseDir();
         } catch (Exception e) {
-            Log.e(TAG, "Failed to create operation history directory", e);
+            Log.e(TAG, "Failed to ensure operation history directory", e);
             return false;
         }
     }
@@ -194,8 +199,122 @@ public class FileManager {
             fos.write(data, 0, len);
             fos.flush();
 
+            // 写入后再次检查文件大小，确保不超过限制
+            long currentSize = currentMainLogFile.length();
+            long maxSize = config.getFileSizeMb() * 1024L * 1024L;
+            Log.d(TAG, "After write - File size: " + currentSize + " bytes, Max size: " + maxSize + " bytes");
+
         } catch (IOException e) {
             Log.e(TAG, "Failed to append to main log", e);
+        }
+    }
+
+    /**
+     * 追加操作历史记录到A_OperationHistory.txt
+     * @param operation 操作详情
+     */
+    public void appendOperationHistory(String operation) {
+        Log.i(TAG, "appendOperationHistory called with: " + operation);
+        Log.i(TAG, "appendOperationHistory - operationHistoryFile path: " + operationHistoryFile.getAbsolutePath());
+
+        try {
+            // 确保基础目录存在
+            boolean dirEnsured = ensureOperationHistoryDir();
+            Log.d(TAG, "appendOperationHistory - directory ensured: " + dirEnsured);
+
+            if (!dirEnsured) {
+                Log.e(TAG, "appendOperationHistory - failed to ensure directory");
+                return;
+            }
+
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+            String logEntry = "[" + timestamp + "] " + operation + "\n";
+            Log.d(TAG, "appendOperationHistory - logEntry: " + logEntry);
+
+            // 检查文件是否存在
+            boolean fileExists = operationHistoryFile.exists();
+            Log.d(TAG, "appendOperationHistory - file exists before write: " + fileExists);
+
+            // 如果文件不存在，尝试创建
+            if (!fileExists) {
+                try {
+                    boolean created = operationHistoryFile.createNewFile();
+                    Log.i(TAG, "appendOperationHistory - file created: " + created);
+                    if (created) {
+                        Log.i(TAG, "appendOperationHistory - file created successfully at: " + operationHistoryFile.getAbsolutePath());
+                    } else {
+                        Log.e(TAG, "appendOperationHistory - failed to create file");
+                        return;
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "appendOperationHistory - exception while creating file", e);
+                    return;
+                }
+            }
+
+            // 写入操作历史
+            try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
+                fos.write(logEntry.getBytes("UTF-8"));
+                fos.flush();
+                Log.i(TAG, "appendOperationHistory - successfully wrote to file");
+
+                // 验证文件是否真的被写入
+                boolean fileExistsAfter = operationHistoryFile.exists();
+                long fileSize = operationHistoryFile.length();
+                Log.i(TAG, "appendOperationHistory - file exists after write: " + fileExistsAfter + ", size: " + fileSize + " bytes");
+
+            } catch (IOException e) {
+                Log.e(TAG, "appendOperationHistory - IOException while writing to file", e);
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "appendOperationHistory - unexpected exception", e);
+        }
+    }
+
+    /**
+     * 追加配置修改记录（键值对格式）
+     * @param configDetails 配置详情字符串（键-值格式）
+     */
+    public void appendConfigChangeHistory(String configDetails) {
+        Log.i(TAG, "appendConfigChangeHistory called with: " + configDetails);
+
+        try {
+            // 确保基础目录存在
+            if (!ensureOperationHistoryDir()) {
+                Log.e(TAG, "appendConfigChangeHistory - failed to ensure directory");
+                return;
+            }
+
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+            String logEntry = "[" + timestamp + "] Config changed: " + configDetails + "\n";
+            Log.d(TAG, "appendConfigChangeHistory - logEntry: " + logEntry);
+
+            // 如果文件不存在，先创建
+            if (!operationHistoryFile.exists()) {
+                try {
+                    boolean created = operationHistoryFile.createNewFile();
+                    Log.i(TAG, "appendConfigChangeHistory - file created: " + created);
+                    if (!created) {
+                        Log.e(TAG, "appendConfigChangeHistory - failed to create file");
+                        return;
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "appendConfigChangeHistory - exception while creating file", e);
+                    return;
+                }
+            }
+
+            // 写入配置修改记录
+            try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
+                fos.write(logEntry.getBytes("UTF-8"));
+                fos.flush();
+                Log.i(TAG, "appendConfigChangeHistory - successfully wrote to file");
+            } catch (IOException e) {
+                Log.e(TAG, "appendConfigChangeHistory - failed to write to file", e);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "appendConfigChangeHistory - unexpected exception", e);
         }
     }
 
@@ -209,87 +328,28 @@ public class FileManager {
             return false;
         }
 
-        // 检查文件最小生存时间
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastFileCreationTime < MIN_FILE_LIFETIME_MS) {
-            Log.d(TAG, "File too young (" + (currentTime - lastFileCreationTime) + "ms), skipping rotation check");
-            return false;
-        }
-
         long currentSize = currentMainLogFile.length();
         long maxSize = config.getFileSizeMb() * 1024L * 1024L;
+        long currentTime = System.currentTimeMillis();
+        long fileAge = currentTime - lastFileCreationTime;
 
-        boolean shouldRotate = (currentSize + additionalBytes > maxSize);
-
-        if (shouldRotate) {
-            Log.i(TAG, "File rotation needed - Current: " + currentSize + " bytes, " +
-                    "Additional: " + additionalBytes + " bytes, Max: " + maxSize + " bytes");
+        // 如果即将超限，检查文件年龄
+        if (currentSize + additionalBytes > maxSize) {
+            if (fileAge < MIN_FILE_LIFETIME_MS) {
+                // 文件太年轻但短时间占满，进行轮转并打印提示日志
+                Log.w(TAG, "File rotation forced - File too young (" + fileAge + "ms) but size limit reached. " +
+                        "Current: " + currentSize + " bytes, Additional: " + additionalBytes + " bytes, Max: " + maxSize + " bytes");
+                return true;
+            } else {
+                // 文件已超过最小生存时间，正常轮转
+                Log.i(TAG, "File rotation needed - Current: " + currentSize + " bytes, " +
+                        "Additional: " + additionalBytes + " bytes, Max: " + maxSize + " bytes");
+                return true;
+            }
         }
 
-        return shouldRotate;
-    }
-
-    /**
-     * 追加操作历史记录
-     * @param operation 操作记录
-     */
-    public void appendOperateHistory(String operation) {
-        try {
-            if (!ensureBaseDir()) {
-                return;
-            }
-
-            try (FileOutputStream fos = new FileOutputStream(historyFile, true)) {
-                fos.write(operation.getBytes("UTF-8"));
-                fos.flush();
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to append operate history", e);
-        }
-    }
-
-    /**
-     * 追加操作历史记录到A_OperationHistory.txt
-     * @param operation 操作详情
-     */
-    public void appendOperationHistory(String operation) {
-        try {
-            if (!ensureOperationHistoryDir()) {
-                return;
-            }
-
-            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
-            String logEntry = "[" + timestamp + "] " + operation + "\n";
-
-            try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
-                fos.write(logEntry.getBytes("UTF-8"));
-                fos.flush();
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to append operation history", e);
-        }
-    }
-
-    /**
-     * 追加配置修改记录（键值对格式）
-     * @param configDetails 配置详情字符串（键-值格式）
-     */
-    public void appendConfigChangeHistory(String configDetails) {
-        try {
-            if (!ensureOperationHistoryDir()) {
-                return;
-            }
-
-            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
-            String logEntry = "[" + timestamp + "] Config changed: " + configDetails + "\n";
-
-            try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
-                fos.write(logEntry.getBytes("UTF-8"));
-                fos.flush();
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to append config change history", e);
-        }
+        // 文件大小未超限，不轮转
+        return false;
     }
 
     /**
@@ -485,9 +545,9 @@ public class FileManager {
                     String name = file.getName();
                     if (name.startsWith(LOG_FILE_PREFIX) && name.contains(today)) {
                         try {
-                            // 解析文件名：mainlog_yyyyMMdd_HHmmss_sequence.txt
+                            // 正确的解析逻辑：mainlog_yyyyMMdd_HHmmss_sequence.txt
                             String[] parts = name.split("_");
-                            if (parts.length >= 4) {
+                            if (parts.length >= 4) { // 应该是4个部分
                                 String sequenceStr = parts[3].replace(LOG_FILE_EXTENSION, "");
                                 // 检查是否是数字
                                 if (sequenceStr.matches("\\d+")) {
