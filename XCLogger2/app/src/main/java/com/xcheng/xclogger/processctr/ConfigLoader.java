@@ -1,15 +1,17 @@
 package com.xcheng.xclogger.processctr;
 
 import android.content.Context;
+import android.content.res.XmlResourceParser;
 import android.util.Log;
 
+import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserFactory;
+import org.xmlpull.v1.XmlPullParserException;
 
-import java.io.InputStream;
+import java.io.IOException;
 
 /**
  * ConfigLoader - 配置加载器，负责从XML文件和数据库加载配置
@@ -20,7 +22,8 @@ import java.io.InputStream;
  * - replaceWith(XcLoggerConfig) - 替换当前配置
  * - getCurrentConfig() - 获取当前配置
  * - current() - 获取当前配置（静态方法）
- * - updateConfig(XcLoggerConfig) - 更新配置并保存到数据库
+ * - updateConfig(Context, XcLoggerConfig) - 更新配置并保存到数据库
+ * - resetToDefault(Context) - 重置为默认配置
  * - loadFromDatabase(Context) - 从数据库加载配置
  * - loadFromXml(Context) - 从XML文件加载配置
  */
@@ -118,10 +121,43 @@ public class ConfigLoader {
         try {
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             db.saveConfig(config);
+            // 更新当前配置实例
             this.currentConfig = config;
             Log.i(TAG, "Config updated and saved to database");
+            Log.i(TAG, "All components should refresh config from ConfigLoader");
         } catch (Exception e) {
             Log.e(TAG, "Failed to update config", e);
+        }
+    }
+
+    /**
+     * 重置为默认配置
+     * @param context Android上下文
+     * @return 默认配置对象
+     */
+    public XcLoggerConfig resetToDefault(Context context) {
+        try {
+            // 从XML文件加载默认配置
+            XcLoggerConfig defaultConfig = loadFromXml(context);
+
+            if (defaultConfig != null) {
+                // 保存到数据库
+                XcLoggerDatabase db = new XcLoggerDatabase(context);
+                db.saveConfig(defaultConfig);
+
+                // 更新当前配置实例
+                this.currentConfig = defaultConfig;
+
+                Log.i(TAG, "Config reset to default and saved to database");
+                Log.i(TAG, "All components should refresh config from ConfigLoader");
+                return defaultConfig;
+            } else {
+                Log.e(TAG, "Failed to load default config from XML");
+                return null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error resetting config to default", e);
+            return null;
         }
     }
 
@@ -147,52 +183,63 @@ public class ConfigLoader {
      */
     private XcLoggerConfig loadFromXml(Context context) {
         try {
-            InputStream inputStream = context.getAssets().open("default_config.xml");
-            XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
-            XmlPullParser parser = factory.newPullParser();
-            parser.setInput(inputStream, "UTF-8");
-
+            XmlResourceParser parser = context.getResources().getXml(R.xml.default_config);
             XcLoggerConfig config = new XcLoggerConfig();
-            int eventType = parser.getEventType();
+            boolean inFilteringRules = false;
 
+            int eventType = parser.getEventType();
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 if (eventType == XmlPullParser.START_TAG) {
                     String tagName = parser.getName();
-                    switch (tagName) {
-                        case "total_size_gb":
-                            config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
-                            break;
-                        case "file_size_mb":
-                            config.setFileSizeMb(Integer.parseInt(parser.nextText()));
-                            break;
-                        case "buffer_size_bytes":
-                            config.setBufferSizeBytes(Integer.parseInt(parser.nextText()));
-                            break;
-                        case "log_dir":
-                            config.setLogDir(parser.nextText());
-                            break;
-                        case "log_period_hours":
-                            config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
-                            break;
-                        case "filter_tag":
-                            config.setFilterTag(parser.nextText());
-                            break;
-                        case "filter_level":
-                            config.setFilterLevel(parser.nextText());
-                            break;
-                        case "filter_package":
-                            config.setFilterPackage(parser.nextText());
-                            break;
+                    if ("filtering_rules".equals(tagName)) {
+                        inFilteringRules = true;
+                    } else if (inFilteringRules) {
+                        // 在filtering_rules内部处理过滤规则
+                        switch (tagName) {
+                            case "tag":
+                                config.setFilterTag(parser.nextText());
+                                break;
+                            case "level":
+                                config.setFilterLevel(parser.nextText());
+                                break;
+                            case "package_name":
+                                config.setFilterPackage(parser.nextText());
+                                break;
+                        }
+                    } else {
+                        // 处理其他配置项
+                        switch (tagName) {
+                            case "total_size":
+                                config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
+                                break;
+                            case "file_size":
+                                config.setFileSizeMb(Integer.parseInt(parser.nextText()));
+                                break;
+                            case "buffer_size":
+                                config.setBufferSizeBytes(Integer.parseInt(parser.nextText()));
+                                break;
+                            case "log_dir":
+                                config.setLogDir(parser.nextText());
+                                break;
+                            case "log_period":
+                                config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
+                                break;
+                        }
+                    }
+                } else if (eventType == XmlPullParser.END_TAG) {
+                    String tagName = parser.getName();
+                    if ("filtering_rules".equals(tagName)) {
+                        inFilteringRules = false;
                     }
                 }
                 eventType = parser.next();
             }
 
-            inputStream.close();
+            parser.close();
             Log.i(TAG, "Config loaded from XML file");
             return config;
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to load config from XML", e);
+        } catch (XmlPullParserException | IOException e) {
+            Log.e(TAG, "Error parsing XML config file", e);
             return null;
         }
     }

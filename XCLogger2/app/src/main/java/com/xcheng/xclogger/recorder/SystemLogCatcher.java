@@ -2,12 +2,11 @@ package com.xcheng.xclogger.recorder;
 
 import android.util.Log;
 
-import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -36,10 +35,11 @@ public class SystemLogCatcher {
      */
     public interface OnLogLineListener {
         /**
-         * 接收日志行
-         * @param line 日志行内容
+         * 接收日志行字节数据
+         * @param data 日志行字节数据
+         * @param length 数据长度
          */
-        void onLogLine(String line);
+        void onLogLine(byte[] data, int length);
     }
 
     /**
@@ -143,11 +143,16 @@ public class SystemLogCatcher {
      * 读取logcat输出
      */
     private void readLogcatOutput() {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(logcatProcess.getInputStream()))) {
-            String line;
-            while (running.get() && (line = reader.readLine()) != null) {
+        try (InputStream inputStream = logcatProcess.getInputStream();
+             BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream)) {
+
+            byte[] buffer = new byte[8192]; // 8KB缓冲区
+            int bytesRead;
+
+            while (running.get() && (bytesRead = bufferedInputStream.read(buffer)) != -1) {
                 if (running.get() && logLineListener != null) {
-                    logLineListener.onLogLine(line);
+                    // 直接传递原始字节数据，保持logcat的原始格式
+                    logLineListener.onLogLine(buffer, bytesRead);
                 }
             }
         } catch (IOException e) {

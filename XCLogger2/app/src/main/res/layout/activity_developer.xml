@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:gravity="center">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Developer Mode"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="32dp"
+        android:textColor="@android:color/black" />
+
+    <Button
+        android:id="@+id/btn_print_db"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Print DB Info"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:background="@drawable/bg_rounded_gray"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btn_reset_db"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RESET DB"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:background="@drawable/bg_rounded_gray"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Check logcat for database information"
+        android:textSize="14sp"
+        android:textColor="@android:color/darker_gray"
+        android:gravity="center" />
+
+</LinearLayout>

@@ -25,12 +25,12 @@ public class XcLoggerDatabase {
     private static final String K_VERSION = "database_version";
     private static final String K_OPERATION_HISTORY_PATH = "operation_history_path";
 
-    // 配置相关键名
-    private static final String K_TOTAL_SIZE_GB = "total_size_gb";
-    private static final String K_FILE_SIZE_MB = "file_size_mb";
-    private static final String K_BUFFER_SIZE_BYTES = "buffer_size_bytes";
+    // 配置相关键名（与XML标签名一致）
+    private static final String K_TOTAL_SIZE = "total_size";
+    private static final String K_FILE_SIZE = "file_size";
+    private static final String K_BUFFER_SIZE = "buffer_size";
     private static final String K_LOG_DIR = "log_dir";
-    private static final String K_LOG_PERIOD_HOURS = "log_period_hours";
+    private static final String K_LOG_PERIOD = "log_period";
     private static final String K_FILTER_TAG = "filter_tag";
     private static final String K_FILTER_LEVEL = "filter_level";
     private static final String K_FILTER_PACKAGE = "filter_package";
@@ -53,11 +53,11 @@ public class XcLoggerDatabase {
     public void saveConfig(XcLoggerConfig config) {
         try {
             SharedPreferences.Editor editor = prefs.edit();
-            editor.putInt(K_TOTAL_SIZE_GB, config.getTotalSizeGb());
-            editor.putInt(K_FILE_SIZE_MB, config.getFileSizeMb());
-            editor.putInt(K_BUFFER_SIZE_BYTES, config.getBufferSizeBytes());
+            editor.putInt(K_TOTAL_SIZE, config.getTotalSizeGb());
+            editor.putInt(K_FILE_SIZE, config.getFileSizeMb());
+            editor.putInt(K_BUFFER_SIZE, config.getBufferSizeBytes());
             editor.putString(K_LOG_DIR, config.getLogDir());
-            editor.putInt(K_LOG_PERIOD_HOURS, config.getLogPeriodHours());
+            editor.putInt(K_LOG_PERIOD, config.getLogPeriodHours());
             editor.putString(K_FILTER_TAG, config.getFilterTag());
             editor.putString(K_FILTER_LEVEL, config.getFilterLevel());
             editor.putString(K_FILTER_PACKAGE, config.getFilterPackage());
@@ -75,11 +75,11 @@ public class XcLoggerDatabase {
     public XcLoggerConfig loadConfig() {
         try {
             XcLoggerConfig config = new XcLoggerConfig();
-            config.setTotalSizeGb(prefs.getInt(K_TOTAL_SIZE_GB, 4));
-            config.setFileSizeMb(prefs.getInt(K_FILE_SIZE_MB, 4));
-            config.setBufferSizeBytes(prefs.getInt(K_BUFFER_SIZE_BYTES, 1024));
+            config.setTotalSizeGb(prefs.getInt(K_TOTAL_SIZE, 4));
+            config.setFileSizeMb(prefs.getInt(K_FILE_SIZE, 4));
+            config.setBufferSizeBytes(prefs.getInt(K_BUFFER_SIZE, 1024));
             config.setLogDir(prefs.getString(K_LOG_DIR, "/storage/emulated/0/XcLogger"));
-            config.setLogPeriodHours(prefs.getInt(K_LOG_PERIOD_HOURS, 168));
+            config.setLogPeriodHours(prefs.getInt(K_LOG_PERIOD, 168));
             config.setFilterTag(prefs.getString(K_FILTER_TAG, "all"));
             config.setFilterLevel(prefs.getString(K_FILTER_LEVEL, "all"));
             config.setFilterPackage(prefs.getString(K_FILTER_PACKAGE, "all"));
@@ -140,7 +140,9 @@ public class XcLoggerDatabase {
      * @return 操作历史文件路径
      */
     public String getOperationHistoryPath() {
-        return prefs.getString(K_OPERATION_HISTORY_PATH, "");
+        String path = prefs.getString(K_OPERATION_HISTORY_PATH, "");
+        Log.d(TAG, "Operation history path from database: " + (path.isEmpty() ? "empty" : path));
+        return path;
     }
 
     /**
@@ -157,6 +159,8 @@ public class XcLoggerDatabase {
      * @return 是否存在
      */
     public boolean isOperationHistoryPathExists() {
-        return prefs.contains(K_OPERATION_HISTORY_PATH);
+        boolean exists = prefs.contains(K_OPERATION_HISTORY_PATH);
+        Log.d(TAG, "Operation history path field exists: " + exists);
+        return exists;
     }
 }

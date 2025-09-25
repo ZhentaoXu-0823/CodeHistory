@@ -54,8 +54,8 @@ public class ProcessController {
         // 设置日志捕获器监听器
         this.logCatcher.setOnLogLineListener(new SystemLogCatcher.OnLogLineListener() {
             @Override
-            public void onLogLine(String line) {
-                logBuffer.append(line.getBytes(), line.length());
+            public void onLogLine(byte[] data, int length) {
+                logBuffer.append(data, length);
             }
         });
     }

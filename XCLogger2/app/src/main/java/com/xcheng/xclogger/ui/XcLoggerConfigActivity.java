@@ -5,7 +5,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.ProcessController;
@@ -24,6 +23,7 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * - buildConfigDetailsString(XcLoggerConfig) - 构建配置详情字符串
  * - initViews() - 初始化UI组件
  * - initData() - 初始化数据
+ * - refreshConfigFromLoader() - 从ConfigLoader刷新配置
  */
 public class XcLoggerConfigActivity extends AppCompatActivity {
     private EditText etTotalSize, etFileSize, etBufferSize, etLogDir, etLogPeriod, etFilterTag, etFilterLevel, etFilterPackage;
@@ -55,17 +55,8 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         // 重新检查日志运行状态
         checkLogRunningState();
 
-        // 刷新配置显示
-        if (config != null) {
-            etTotalSize.setText(String.valueOf(config.getTotalSizeGb()));
-            etFileSize.setText(String.valueOf(config.getFileSizeMb()));
-            etBufferSize.setText(String.valueOf(config.getBufferSizeBytes()));
-            etLogDir.setText(config.getLogDir());
-            etLogPeriod.setText(String.valueOf(config.getLogPeriodHours()));
-            etFilterTag.setText(config.getFilterTag());
-            etFilterLevel.setText(config.getFilterLevel());
-            etFilterPackage.setText(config.getFilterPackage());
-        }
+        // 从ConfigLoader重新获取最新配置（确保同步）
+        refreshConfigFromLoader();
     }
 
     /**
@@ -92,6 +83,25 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         database = new XcLoggerDatabase(this);
         processController = ProcessController.getInstance(this);
         config = ConfigLoader.getInstance().getCurrentConfig();
+    }
+
+    /**
+     * 从ConfigLoader刷新配置
+     */
+    private void refreshConfigFromLoader() {
+        // 重新从ConfigLoader获取最新配置
+        this.config = ConfigLoader.getInstance().getCurrentConfig();
+
+        if (config != null) {
+            etTotalSize.setText(String.valueOf(config.getTotalSizeGb()));
+            etFileSize.setText(String.valueOf(config.getFileSizeMb()));
+            etBufferSize.setText(String.valueOf(config.getBufferSizeBytes()));
+            etLogDir.setText(config.getLogDir());
+            etLogPeriod.setText(String.valueOf(config.getLogPeriodHours()));
+            etFilterTag.setText(config.getFilterTag());
+            etFilterLevel.setText(config.getFilterLevel());
+            etFilterPackage.setText(config.getFilterPackage());
+        }
     }
 
     /**
@@ -205,11 +215,11 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
      */
     private String buildConfigDetailsString(XcLoggerConfig config) {
         StringBuilder sb = new StringBuilder();
-        sb.append("total_size_gb=").append(config.getTotalSizeGb()).append(" GB");
-        sb.append("; file_size_mb=").append(config.getFileSizeMb()).append(" MB");
-        sb.append("; buffer_size_bytes=").append(config.getBufferSizeBytes()).append(" bytes");
+        sb.append("total_size=").append(config.getTotalSizeGb()).append(" GB");
+        sb.append("; file_size=").append(config.getFileSizeMb()).append(" MB");
+        sb.append("; buffer_size=").append(config.getBufferSizeBytes()).append(" bytes");
         sb.append("; log_dir=").append(config.getLogDir());
-        sb.append("; log_period_hours=").append(config.getLogPeriodHours()).append(" hours");
+        sb.append("; log_period=").append(config.getLogPeriodHours()).append(" hours");
         sb.append("; filter_tag=").append(config.getFilterTag());
         sb.append("; filter_level=").append(config.getFilterLevel());
         sb.append("; filter_package=").append(config.getFilterPackage());
