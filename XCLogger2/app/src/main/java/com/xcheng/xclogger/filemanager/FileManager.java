@@ -114,6 +114,10 @@ public class FileManager {
             if (!baseDir.exists()) {
                 boolean created = baseDir.mkdirs();
                 Log.i(TAG, "Base directory created: " + baseDir.getPath() + ", success=" + created);
+                if (created) {
+                    // 记录目录创建操作
+                    appendOperationHistory("Directory created: " + baseDir.getAbsolutePath());
+                }
                 return created;
             }
             return true;
@@ -159,15 +163,21 @@ public class FileManager {
             if (created) {
                 lastFileCreationTime = System.currentTimeMillis();
                 Log.i(TAG, "Created new log file: " + fileName);
+                // 记录文件创建操作
+                appendOperationHistory("Log file created: " + fileName + " (size: 0 bytes)");
                 // 更新序列号
                 currentSequenceNumber++;
             } else {
                 Log.w(TAG, "Failed to create log file: " + fileName);
+                // 记录文件创建失败操作
+                appendOperationHistory("Failed to create log file: " + fileName);
             }
             return created;
 
         } catch (IOException e) {
             Log.e(TAG, "Failed to create main log file", e);
+            // 记录文件创建异常操作
+            appendOperationHistory("Exception while creating log file: " + e.getMessage());
             return false;
         }
     }
@@ -441,9 +451,12 @@ public class FileManager {
                 for (File file : files) {
                     if (file.isFile() && file.getName().startsWith(LOG_FILE_PREFIX)) {
                         if (file.lastModified() < cutoffTime) {
+                            long fileSize = file.length();
                             if (file.delete()) {
                                 deletedCount++;
                                 Log.i(TAG, "Deleted old file: " + file.getName());
+                                // 记录文件删除操作
+                                appendOperationHistory("Log file deleted (time limit): " + file.getName() + " (size: " + fileSize + " bytes)");
                             }
                         }
                     }
@@ -465,9 +478,12 @@ public class FileManager {
             int deletedCount = 0;
 
             for (File file : logFiles) {
+                long fileSize = file.length();
                 if (file.delete()) {
                     deletedCount++;
                     Log.i(TAG, "Deleted oldest file: " + file.getName());
+                    // 记录文件删除操作
+                    appendOperationHistory("Log file deleted (storage/size limit): " + file.getName() + " (size: " + fileSize + " bytes)");
                 }
             }
 
