@@ -11,7 +11,7 @@ android {
         minSdk 29
         targetSdk 33
         versionCode 1
-        versionName "1.0.0"
+        versionName "1.0.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,10 +38,12 @@ android {
         // 根据构建类型应用不同命名规则
         if (buildType == "debug") {
             // Debug版本：[APK Name]_[Build Type].apk
-            apkName = "${baseName}_${buildType}.apk"
+//            apkName = "${baseName}_${buildType}.apk"
+            // Release版本：[APK Name]_v[Release Version]_[Timestamp].apk
+            apkName = "${baseName}_v${versionName}_${timestamp}.apk"
         } else {
-            // Release版本：[APK Name]_v[Release Version]_[Debug Version]_[Build Type]_[Timestamp].apk
-            apkName = "${baseName}_v${versionName}_${versionCode}_${buildType}_${timestamp}.apk"
+            // Release版本：[APK Name]_v[Release Version]_[Timestamp].apk
+            apkName = "${baseName}_v${versionName}_${timestamp}.apk"
         }
 
         // 过滤非法字符
