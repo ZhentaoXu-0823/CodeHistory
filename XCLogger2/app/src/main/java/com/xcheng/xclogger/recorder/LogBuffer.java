@@ -17,6 +17,7 @@ import com.xcheng.xclogger.util.XcLoggerConfig;
  * - clear() - 清空缓冲区
  */
 public class LogBuffer {
+    // 缓冲区相关
     private byte[] buffer;
     private int currentSize;
     private int maxSize;
@@ -39,7 +40,7 @@ public class LogBuffer {
      */
     public LogBuffer() {
         XcLoggerConfig config = ConfigLoader.current();
-        this.maxSize = (config != null) ? config.getBufferSizeBytes() : 4096;
+        this.maxSize = (config != null) ? config.getBufferSizeBytes() : 4096; // 默认4096字节
         this.buffer = new byte[maxSize];
         this.currentSize = 0;
     }

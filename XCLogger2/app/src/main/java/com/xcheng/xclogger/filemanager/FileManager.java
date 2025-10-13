@@ -3,11 +3,9 @@ package com.xcheng.xclogger.filemanager;
 import android.content.Context;
 import android.os.StatFs;
 import android.util.Log;
-
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -46,14 +44,19 @@ public class FileManager {
     private static final String LOG_FILE_PREFIX = "mainlog_";
     private static final String LOG_FILE_EXTENSION = ".txt";
     private static final String OPERATION_HISTORY_FILE = "A_OperationHistory.txt";
-    private static final long MIN_FILE_LIFETIME_MS = 10 * 1000; // 10秒最小文件生存时间
+    private static final long MIN_FILE_LIFETIME_MS = 10 * 1000; // 10秒最小文件生存时间，防止过度轮转
 
+    // 核心组件
     private Context context;
     private XcLoggerConfig config;
-    private File operationHistoryDir;
-    private File mainLogDir;
+
+    // 文件路径相关
+    private File operationHistoryDir; // 操作历史目录（固定路径）
+    private File mainLogDir; // 主日志目录（动态路径）
     private File operationHistoryFile;
     private File currentMainLogFile;
+
+    // 文件状态
     private long currentFileStartTime;
     private String currentDate;
 
@@ -328,7 +331,7 @@ public class FileManager {
             long totalBytes = stat.getTotalBytes();
 
             // 如果可用空间小于总空间的5%，认为存储已满
-            return (availableBytes * 100 / totalBytes) < 5;
+            return (availableBytes * 100 / totalBytes) < 5; // 5%阈值
         } catch (Exception e) {
             Log.e(TAG, "Error checking storage space", e);
             return false;
@@ -422,7 +425,7 @@ public class FileManager {
             String today = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
             if (!today.equals(currentDate)) {
                 currentDate = today;
-                return 1;
+                return 1; // 新的一天，序列号重置为1
             }
 
             File[] files = mainLogDir.listFiles();

@@ -3,7 +3,6 @@ package com.xcheng.xclogger.processctr;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
-
 import com.xcheng.xclogger.service.LogCaptureService;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
@@ -90,7 +89,7 @@ public class LogServiceController {
             stopLogService(context);
 
             // 等待一小段时间
-            Thread.sleep(1000);
+            Thread.sleep(1000); // 1秒等待时间
 
             // 再启动服务
             startLogService(context);

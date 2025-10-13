@@ -19,8 +19,13 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * - checkLogRunningState() - 检查日志运行状态
  */
 public class DeveloperActivity extends AppCompatActivity {
+    private static final String TAG = "DeveloperActivity";
+
+    // UI组件
     private Button btnPrintDb;
     private Button btnResetDb;
+
+    // 数据相关
     private XcLoggerDatabase database;
 
     @Override
@@ -53,22 +58,22 @@ public class DeveloperActivity extends AppCompatActivity {
         XcLoggerConfig config = database.loadConfig();
 
         if (config == null) {
-            Log.i("XcLoggerDev", "No config in DB");
+            Log.i(TAG, "No config in DB");
             return;
         }
 
-        Log.i("XcLoggerDev", "=== Database Configuration Info ===");
-        Log.i("XcLoggerDev", "total_size=" + config.getTotalSizeGb() + " GB");
-        Log.i("XcLoggerDev", "file_size=" + config.getFileSizeMb() + " MB");
-        Log.i("XcLoggerDev", "buffer_size=" + config.getBufferSizeBytes() + " bytes");
-        Log.i("XcLoggerDev", "log_dir=" + config.getLogDir());
-        Log.i("XcLoggerDev", "log_period=" + config.getLogPeriodHours() + " hours");
-        Log.i("XcLoggerDev", "filter_tag=" + config.getFilterTag());
-        Log.i("XcLoggerDev", "filter_level=" + config.getFilterLevel());
-        Log.i("XcLoggerDev", "filter_package=" + config.getFilterPackage());
-        Log.i("XcLoggerDev", "is_running=" + database.loadRunningState());
-        Log.i("XcLoggerDev", "operation_history_path=" + database.getOperationHistoryPath());
-        Log.i("XcLoggerDev", "=== End of Configuration Info ===");
+        Log.i(TAG, "=== Database Configuration Info ===");
+        Log.i(TAG, "total_size=" + config.getTotalSizeGb() + " GB");
+        Log.i(TAG, "file_size=" + config.getFileSizeMb() + " MB");
+        Log.i(TAG, "buffer_size=" + config.getBufferSizeBytes() + " bytes");
+        Log.i(TAG, "log_dir=" + config.getLogDir());
+        Log.i(TAG, "log_period=" + config.getLogPeriodHours() + " hours");
+        Log.i(TAG, "filter_tag=" + config.getFilterTag());
+        Log.i(TAG, "filter_level=" + config.getFilterLevel());
+        Log.i(TAG, "filter_package=" + config.getFilterPackage());
+        Log.i(TAG, "is_running=" + database.loadRunningState());
+        Log.i(TAG, "operation_history_path=" + database.getOperationHistoryPath());
+        Log.i(TAG, "=== End of Configuration Info ===");
     }
 
     /**
@@ -86,14 +91,14 @@ public class DeveloperActivity extends AppCompatActivity {
             XcLoggerConfig defaultConfig = ConfigLoader.getInstance().resetToDefault(this);
 
             if (defaultConfig != null) {
-                Log.i("XcLoggerDev", "Database reset to default configuration");
+                Log.i(TAG, "Database reset to default configuration");
                 Toast.makeText(this, "Database reset to default configuration successfully. Please refresh other activities.", Toast.LENGTH_LONG).show();
             } else {
-                Log.e("XcLoggerDev", "Failed to reset database to default configuration");
+                Log.e(TAG, "Failed to reset database to default configuration");
                 Toast.makeText(this, "Failed to reset database to default configuration", Toast.LENGTH_LONG).show();
             }
         } catch (Exception e) {
-            Log.e("XcLoggerDev", "Error resetting database", e);
+            Log.e(TAG, "Error resetting database", e);
             Toast.makeText(this, "Error resetting database: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }

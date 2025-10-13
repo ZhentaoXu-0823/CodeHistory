@@ -1,9 +1,7 @@
 package com.xcheng.xclogger.recorder;
 
 import android.util.Log;
-
 import com.xcheng.xclogger.util.XcLoggerConfig;
-
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,6 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class SystemLogCatcher {
     private static final String TAG = "SystemLogCatcher";
+
+    // 核心组件
     private Process logcatProcess;
     private ExecutorService executor;
     private AtomicBoolean running = new AtomicBoolean(false);

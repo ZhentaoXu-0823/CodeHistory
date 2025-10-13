@@ -3,9 +3,7 @@ package com.xcheng.xclogger.util;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
-
 import com.xcheng.xclogger.processctr.ConfigLoader;
-import com.xcheng.xclogger.util.XcLoggerConfig;
 
 /**
  * DatabaseMigration - 数据库迁移工具类，处理SharedPreferences的版本升级
@@ -24,7 +22,7 @@ public class DatabaseMigration {
     private static final String KEY_DATABASE_VERSION = "database_version";
     private static final String KEY_OPERATION_HISTORY_PATH = "operation_history_path";
 
-    private static final int CURRENT_VERSION = 3;
+    private static final int CURRENT_VERSION = 3; // 当前数据库版本
 
     /**
      * 检查并执行必要的数据库迁移
@@ -50,7 +48,7 @@ public class DatabaseMigration {
      */
     private static int getCurrentVersion(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        return prefs.getInt(KEY_DATABASE_VERSION, 1);
+        return prefs.getInt(KEY_DATABASE_VERSION, 1); // 默认版本1
     }
 
     /**

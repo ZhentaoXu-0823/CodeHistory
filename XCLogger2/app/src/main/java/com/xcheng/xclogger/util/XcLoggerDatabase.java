@@ -36,6 +36,7 @@ public class XcLoggerDatabase {
     private static final String K_FILTER_PACKAGE = "filter_package";
     private static final String K_IS_RUNNING = "is_running";
 
+    // SharedPreferences实例
     private SharedPreferences prefs;
 
     /**
@@ -75,11 +76,11 @@ public class XcLoggerDatabase {
     public XcLoggerConfig loadConfig() {
         try {
             XcLoggerConfig config = new XcLoggerConfig();
-            config.setTotalSizeGb(prefs.getInt(K_TOTAL_SIZE, 4));
-            config.setFileSizeMb(prefs.getInt(K_FILE_SIZE, 4));
-            config.setBufferSizeBytes(prefs.getInt(K_BUFFER_SIZE, 1024));
+            config.setTotalSizeGb(prefs.getInt(K_TOTAL_SIZE, 4)); // 默认4GB
+            config.setFileSizeMb(prefs.getInt(K_FILE_SIZE, 4)); // 默认4MB
+            config.setBufferSizeBytes(prefs.getInt(K_BUFFER_SIZE, 1024)); // 默认1024字节
             config.setLogDir(prefs.getString(K_LOG_DIR, "/storage/emulated/0/XcLogger"));
-            config.setLogPeriodHours(prefs.getInt(K_LOG_PERIOD, 168));
+            config.setLogPeriodHours(prefs.getInt(K_LOG_PERIOD, 168)); // 默认168小时（7天）
             config.setFilterTag(prefs.getString(K_FILTER_TAG, "all"));
             config.setFilterLevel(prefs.getString(K_FILTER_LEVEL, "all"));
             config.setFilterPackage(prefs.getString(K_FILTER_PACKAGE, "all"));
@@ -110,7 +111,7 @@ public class XcLoggerDatabase {
      */
     public boolean loadRunningState() {
         try {
-            boolean running = prefs.getBoolean(K_IS_RUNNING, false);
+            boolean running = prefs.getBoolean(K_IS_RUNNING, false); // 默认false
             Log.i(TAG, "Running state loaded: " + running);
             return running;
         } catch (Exception e) {
@@ -124,7 +125,7 @@ public class XcLoggerDatabase {
      * @return 数据库版本号
      */
     public int getDatabaseVersion() {
-        return prefs.getInt(K_VERSION, 1);
+        return prefs.getInt(K_VERSION, 1); // 默认版本1
     }
 
     /**

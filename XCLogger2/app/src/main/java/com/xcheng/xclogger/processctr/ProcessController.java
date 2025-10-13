@@ -2,7 +2,6 @@ package com.xcheng.xclogger.processctr;
 
 import android.content.Context;
 import android.util.Log;
-
 import com.xcheng.xclogger.filemanager.FileManager;
 import com.xcheng.xclogger.recorder.LogBuffer;
 import com.xcheng.xclogger.recorder.SystemLogCatcher;
@@ -22,8 +21,11 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  */
 public class ProcessController {
     private static final String TAG = "ProcessController";
+
+    // 单例相关
     private static ProcessController instance;
 
+    // 核心组件
     private Context context;
     private FileManager fileManager;
     private SystemLogCatcher logCatcher;

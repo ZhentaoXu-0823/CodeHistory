@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
-
+import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.service.LogCaptureService;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
@@ -121,8 +121,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     private void recordOperationHistory(Context context, String operation) {
         try {
             // 通过ProcessController记录操作历史
-            com.xcheng.xclogger.processctr.ProcessController controller =
-                    com.xcheng.xclogger.processctr.ProcessController.getInstance(context);
+            ProcessController controller = ProcessController.getInstance(context);
             controller.recordOperationHistory(operation);
         } catch (Exception e) {
             Log.e(TAG, "Failed to record operation history", e);

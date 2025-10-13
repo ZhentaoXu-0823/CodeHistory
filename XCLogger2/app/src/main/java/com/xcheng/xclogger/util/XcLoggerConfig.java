@@ -22,6 +22,7 @@ package com.xcheng.xclogger.util;
  * - setFilterPackage(String) - 设置过滤包名
  */
 public class XcLoggerConfig {
+	// 配置参数
 	private int totalSizeGb;
 	private int fileSizeMb;
 	private int bufferSizeBytes;

@@ -1,6 +1,7 @@
 package com.xcheng.xclogger.ui;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -26,8 +27,13 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * - refreshConfigFromLoader() - 从ConfigLoader刷新配置
  */
 public class XcLoggerConfigActivity extends AppCompatActivity {
+    private static final String TAG = "XcLoggerConfigActivity";
+
+    // UI组件
     private EditText etTotalSize, etFileSize, etBufferSize, etLogDir, etLogPeriod, etFilterTag, etFilterLevel, etFilterPackage;
     private Button btnSave;
+
+    // 数据相关
     private boolean isLogRunning = false;
     private XcLoggerConfig config;
     private XcLoggerDatabase database;
@@ -204,6 +210,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         } catch (NumberFormatException e) {
             Toast.makeText(this, "Invalid number format, please check your input", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
+            Log.e(TAG, "Failed to save configuration", e);
             Toast.makeText(this, "Failed to save configuration: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }

@@ -3,14 +3,11 @@ package com.xcheng.xclogger.processctr;
 import android.content.Context;
 import android.content.res.XmlResourceParser;
 import android.util.Log;
-
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
-
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
-
 import java.io.IOException;
 
 /**
@@ -29,6 +26,8 @@ import java.io.IOException;
  */
 public class ConfigLoader {
     private static final String TAG = "ConfigLoader";
+
+    // 单例相关
     private static ConfigLoader instance;
     private XcLoggerConfig currentConfig;
 

@@ -10,9 +10,7 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
-
 import androidx.core.app.NotificationCompat;
-
 import com.xcheng.xclogger.MainActivity;
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.processctr.ConfigLoader;
@@ -34,8 +32,9 @@ import com.xcheng.xclogger.util.DatabaseMigration;
 public class LogCaptureService extends Service {
     private static final String TAG = "LogCaptureService";
     private static final String CHANNEL_ID = "LogCaptureServiceChannel";
-    private static final int NOTIFICATION_ID = 1;
+    private static final int NOTIFICATION_ID = 1; // 通知ID
 
+    // 核心组件
     private ProcessController processController;
 
     @Override
