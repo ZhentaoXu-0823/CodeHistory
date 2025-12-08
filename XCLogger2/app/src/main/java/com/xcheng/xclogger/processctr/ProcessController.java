@@ -8,6 +8,8 @@ import com.xcheng.xclogger.recorder.SystemLogCatcher;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
+import java.io.File;
+
 /**
  * ProcessController - 进程控制器，负责协调日志捕获的各个组件
  *
@@ -76,6 +78,11 @@ public class ProcessController {
 
     /**
      * 开始日志记录
+     *
+     * 修复说明：
+     * - 在启动日志前，先更新FileManager路径
+     * - 路径更新后，主动创建新的日志文件，确保新路径下有文件
+     * - 记录启动操作历史，便于追踪
      */
     public void startLogging() {
         try {
@@ -83,9 +90,38 @@ public class ProcessController {
 
             // 更新配置
             this.config = ConfigLoader.getInstance().getCurrentConfig();
+            if (config == null) {
+                Log.e(TAG, "Config is null, cannot start logging");
+                recordOperationHistory("Error: Failed to start logging - config is null");
+                return;
+            }
 
-            // 更新FileManager路径
+            // 更新FileManager路径（关键：确保路径是最新的）
             fileManager.updatePaths();
+
+            // 确保新路径下有日志文件（修复：路径变更后主动创建文件）
+            // 这样可以确保即使短时间内没有日志数据，新路径下也有文件创建记录
+            if (fileManager.getCurrentMainLogFile() == null) {
+                File newFile = fileManager.createNewMainLogFile();
+                if (newFile != null) {
+                    Log.i(TAG, "Created initial log file in new directory: " + newFile.getAbsolutePath());
+                } else {
+                    Log.w(TAG, "Failed to create initial log file, will create when first data arrives");
+                }
+            } else {
+                // 检查当前文件是否在新路径下
+                File currentFile = fileManager.getCurrentMainLogFile();
+                File currentDir = fileManager.getMainLogDir();
+                if (currentFile != null && currentDir != null &&
+                        !currentFile.getParentFile().equals(currentDir)) {
+                    // 文件在旧路径下，创建新文件
+                    Log.i(TAG, "Current log file is in old directory, creating new file in new directory");
+                    File newFile = fileManager.createNewMainLogFile();
+                    if (newFile != null) {
+                        Log.i(TAG, "Created new log file in new directory: " + newFile.getAbsolutePath());
+                    }
+                }
+            }
 
             // 开始日志捕获
             logCatcher.startCapture(config);
