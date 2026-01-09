@@ -1,5 +1,6 @@
 package com.xcheng.xclogger.recorder;
 
+import android.util.Log;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 
@@ -17,11 +18,17 @@ import com.xcheng.xclogger.util.XcLoggerConfig;
  * - clear() - 清空缓冲区
  */
 public class LogBuffer {
+    private static final String TAG = "LogBuffer";
+
     // 缓冲区相关
     private byte[] buffer;
     private int currentSize;
     private int maxSize;
     private OnFlushListener flushListener;
+
+    // 统计信息
+    private long totalAppended = 0;
+    private long totalFlushed = 0;
 
     /**
      * 刷新监听器接口
@@ -43,6 +50,7 @@ public class LogBuffer {
         this.maxSize = (config != null) ? config.getBufferSizeBytes() : 4096; // 默认4096字节
         this.buffer = new byte[maxSize];
         this.currentSize = 0;
+//        Log.d(TAG, "LogBuffer initialized with maxSize: " + maxSize + " bytes");
     }
 
     /**
@@ -51,34 +59,59 @@ public class LogBuffer {
      * @param len 数据长度
      */
     public void append(byte[] data, int len) {
-        if (data == null || len <= 0) return;
+        if (data == null || len <= 0) {
+            Log.w(TAG, "append called with null data or zero length");
+            return;
+        }
+
+        totalAppended += len;
+        
+//        if (totalAppended == len) {
+//            Log.i(TAG, "First data appended to buffer, bytes: " + len);
+//        }
 
         // 如果单次数据超过缓冲区大小，直接刷新
         if (len > maxSize) {
+//            Log.w(TAG, "Data size (" + len + ") exceeds buffer size (" + maxSize + "), flushing and writing directly");
             flush();
             if (flushListener != null) {
                 flushListener.onFlush(data, len);
+                totalFlushed += len;
+            } else {
+                Log.e(TAG, "flushListener is null, data will be lost! bytes: " + len);
             }
             return;
         }
 
         // 检查添加后是否超过缓冲区大小
         if (currentSize + len > maxSize) {
+//            Log.d(TAG, "Buffer will overflow, flushing before append. currentSize: " + currentSize + ", new data: " + len);
             flush();
         }
 
         // 添加数据到缓冲区
         System.arraycopy(data, 0, buffer, currentSize, len);
         currentSize += len;
+        
+//        Log.d(TAG, "Data appended to buffer. currentSize: " + currentSize + "/" + maxSize + ", total appended: " + totalAppended);
     }
 
     /**
      * 刷新缓冲区数据
      */
     public void flush() {
-        if (currentSize > 0 && flushListener != null) {
-            flushListener.onFlush(buffer, currentSize);
+        if (currentSize > 0) {
+            if (flushListener != null) {
+//                Log.d(TAG, "Flushing buffer, bytes: " + currentSize);
+                flushListener.onFlush(buffer, currentSize);
+                totalFlushed += currentSize;
+//                Log.d(TAG, "Buffer flushed successfully. Total flushed: " + totalFlushed);
+            } else {
+                Log.e(TAG, "flushListener is null, buffer data will be lost! bytes: " + currentSize);
+            }
             currentSize = 0;
+        } else {
+            Log.d(TAG, "flush called but buffer is empty");
         }
     }
 
@@ -104,6 +137,7 @@ public class LogBuffer {
      */
     public void setOnFlushListener(OnFlushListener listener) {
         this.flushListener = listener;
+        Log.d(TAG, "Flush listener set: " + (listener != null ? "not null" : "null"));
     }
 
     /**
@@ -119,5 +153,13 @@ public class LogBuffer {
      */
     public void clear() {
         currentSize = 0;
+    }
+
+    /**
+     * 获取统计信息
+     * @return 统计信息字符串
+     */
+    public String getStatistics() {
+        return "Total appended: " + totalAppended + " bytes, Total flushed: " + totalFlushed + " bytes, Current size: " + currentSize + " bytes";
     }
 }

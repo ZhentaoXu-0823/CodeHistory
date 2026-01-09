@@ -64,6 +64,14 @@ public class ProcessController {
         });
     }
 
+    public static synchronized ProcessController getInstance() {
+        if (instance != null) {
+            return instance;
+        } else {
+            return null;
+        }
+    }
+
     /**
      * 获取单例实例
      * @param context Android上下文
@@ -147,8 +155,10 @@ public class ProcessController {
             // 停止日志捕获
             logCatcher.stopCapture();
 
-            // 刷新缓冲区
+            // 刷新缓冲区（确保所有数据都写入文件）
+//            Log.i(TAG, "Flushing buffer before stop. Buffer stats: " + logBuffer.getStatistics());
             logBuffer.flush();
+//            Log.i(TAG, "Buffer flushed. Final stats: " + logBuffer.getStatistics());
 
             // 更新数据库状态
             database.saveRunningState(false);

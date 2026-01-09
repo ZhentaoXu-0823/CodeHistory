@@ -284,6 +284,11 @@ public class FileManager {
      */
     public synchronized void appendToMainLog(byte[] data, int len) {
         try {
+            if (data == null || len <= 0) {
+//                Log.w(TAG, "appendToMainLog called with null data or zero length");
+                return;
+            }
+
             // 确保文件存在，如果不存在则创建
             if (currentMainLogFile == null || !currentMainLogFile.exists()) {
                 File newFile = createNewMainLogFile();
@@ -315,10 +320,16 @@ public class FileManager {
             }
 
             // 写入数据
+            long fileSizeBefore = currentMainLogFile.length();
             try (FileOutputStream fos = new FileOutputStream(currentMainLogFile, true)) {
                 fos.write(data, 0, len);
                 fos.flush();
             }
+            long fileSizeAfter = currentMainLogFile.length();
+
+//            Log.d(TAG, "Data written to file: " + currentMainLogFile.getName() +
+//                  ", bytes written: " + len +
+//                  ", file size: " + fileSizeBefore + " -> " + fileSizeAfter);
         } catch (IOException e) {
             Log.e(TAG, "Error writing to log file", e);
             appendOperationHistory("Error writing to log file: " + e.getMessage());
