@@ -89,7 +89,7 @@ public class ProcessController {
      *
      * 修复说明：
      * - 在启动日志前，先更新FileManager路径
-     * - 路径更新后，主动创建新的日志文件，确保新路径下有文件
+     * - 每次启动日志时都创建新文件，确保每次开关日志都有独立的文件
      * - 记录启动操作历史，便于追踪
      */
     public void startLogging() {
@@ -107,28 +107,12 @@ public class ProcessController {
             // 更新FileManager路径（关键：确保路径是最新的）
             fileManager.updatePaths();
 
-            // 确保新路径下有日志文件（修复：路径变更后主动创建文件）
-            // 这样可以确保即使短时间内没有日志数据，新路径下也有文件创建记录
-            if (fileManager.getCurrentMainLogFile() == null) {
-                File newFile = fileManager.createNewMainLogFile();
-                if (newFile != null) {
-                    Log.i(TAG, "Created initial log file in new directory: " + newFile.getAbsolutePath());
-                } else {
-                    Log.w(TAG, "Failed to create initial log file, will create when first data arrives");
-                }
+            // 每次启动日志时都创建新文件
+            File newFile = fileManager.createNewMainLogFile();
+            if (newFile != null) {
+                Log.i(TAG, "Created new log file: " + newFile.getAbsolutePath());
             } else {
-                // 检查当前文件是否在新路径下
-                File currentFile = fileManager.getCurrentMainLogFile();
-                File currentDir = fileManager.getMainLogDir();
-                if (currentFile != null && currentDir != null &&
-                        !currentFile.getParentFile().equals(currentDir)) {
-                    // 文件在旧路径下，创建新文件
-                    Log.i(TAG, "Current log file is in old directory, creating new file in new directory");
-                    File newFile = fileManager.createNewMainLogFile();
-                    if (newFile != null) {
-                        Log.i(TAG, "Created new log file in new directory: " + newFile.getAbsolutePath());
-                    }
-                }
+                Log.w(TAG, "Failed to create log file, will create when first data arrives");
             }
 
             // 开始日志捕获
@@ -156,9 +140,10 @@ public class ProcessController {
             logCatcher.stopCapture();
 
             // 刷新缓冲区（确保所有数据都写入文件）
-//            Log.i(TAG, "Flushing buffer before stop. Buffer stats: " + logBuffer.getStatistics());
             logBuffer.flush();
-//            Log.i(TAG, "Buffer flushed. Final stats: " + logBuffer.getStatistics());
+
+            // 重置文件状态，确保下次启动时创建新文件
+            fileManager.resetCurrentLogFile();
 
             // 更新数据库状态
             database.saveRunningState(false);

@@ -250,11 +250,13 @@ public class FileManager {
 
             // 生成新文件名
             String fileName = generateFileName();
-            currentMainLogFile = new File(mainLogDir, fileName);
+            File newFile = new File(mainLogDir, fileName);
 
             // 创建新文件
-            if (currentMainLogFile.createNewFile()) {
-                currentFileStartTime = newFileTime;
+            if (newFile.createNewFile()) {
+                // 只有在成功创建文件后才更新引用
+                this.currentMainLogFile = newFile;
+                this.currentFileStartTime = newFileTime;
                 Log.i(TAG, "Created new log file: " + fileName);
 
                 // 记录文件创建操作（记录到操作历史文件）
@@ -275,6 +277,17 @@ public class FileManager {
             appendOperationHistory("Unexpected error creating new log file: " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 重置当前日志文件状态
+     * 在停止日志记录时调用，确保下次启动时创建新文件
+     */
+    public synchronized void resetCurrentLogFile() {
+        this.currentMainLogFile = null;
+        this.currentFileStartTime = 0;
+        // 重置日期，确保序列号计算正确
+        this.currentDate = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
     }
 
     /**
