@@ -86,7 +86,7 @@ public class LogCaptureService extends Service {
     private void startLogCapture() {
         try {
             if (processController != null) {
-                processController.startLogging();
+                processController.startLogging("service");
                 Log.i(TAG, "Log capture started");
             } else {
                 Log.e(TAG, "ProcessController is null, cannot start log capture");
@@ -102,7 +102,7 @@ public class LogCaptureService extends Service {
     private void stopLogCapture() {
         try {
             if (processController != null) {
-                processController.stopLogging();
+                processController.stopLogging("service");
                 Log.i(TAG, "Log capture stopped");
             }
         } catch (Exception e) {

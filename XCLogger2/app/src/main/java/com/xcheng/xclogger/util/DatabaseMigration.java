@@ -3,6 +3,7 @@ package com.xcheng.xclogger.util;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
+import com.xcheng.xclogger.filemanager.FileManager;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 
 /**
@@ -76,6 +77,12 @@ public class DatabaseMigration {
             String defaultPath = getDefaultOperationHistoryPath();
             prefs.edit().putString(KEY_OPERATION_HISTORY_PATH, defaultPath).apply();
             Log.i(TAG, "Added operation_history_path: " + defaultPath);
+            try {
+                FileManager fm = new FileManager(context);
+                fm.appendOperationHistory("DB migrated V1 -> V2 (operation_history_path added: " + defaultPath + ")");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to record operation history for migration V1->V2", e);
+            }
         }
 
         setCurrentVersion(context, 2);
@@ -95,6 +102,12 @@ public class DatabaseMigration {
             String defaultPath = getDefaultOperationHistoryPath();
             prefs.edit().putString(KEY_OPERATION_HISTORY_PATH, defaultPath).apply();
             Log.i(TAG, "Added operation_history_path: " + defaultPath);
+            try {
+                FileManager fm = new FileManager(context);
+                fm.appendOperationHistory("DB migrated V2 -> V3 (operation_history_path added: " + defaultPath + ")");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to record operation history for migration V2->V3", e);
+            }
         }
 
         setCurrentVersion(context, 3);

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.res.XmlResourceParser;
 import android.util.Log;
 import com.xcheng.xclogger.R;
+import com.xcheng.xclogger.filemanager.FileManager;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 import org.xmlpull.v1.XmlPullParser;
@@ -83,6 +84,13 @@ public class ConfigLoader {
                 XcLoggerDatabase db = new XcLoggerDatabase(context);
                 db.saveConfig(config);
                 Log.i(TAG, "Config loaded from XML and saved to database");
+                // 记录首次初始化配置到操作历史
+                try {
+                    FileManager fm = new FileManager(context);
+                    fm.appendOperationHistory("Config initialized from XML and saved to database (first-time load)");
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to record operation history for initial XML load", e);
+                }
                 return config;
             }
 
@@ -124,6 +132,13 @@ public class ConfigLoader {
             this.currentConfig = config;
             Log.i(TAG, "Config updated and saved to database");
             Log.i(TAG, "All components should refresh config from ConfigLoader");
+            // 记录操作历史（默认来源：ConfigLoader.updateConfig）
+            try {
+                FileManager fm = new FileManager(context);
+                fm.appendOperationHistory("Config updated via ConfigLoader.updateConfig (source:ConfigLoader)");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to record operation history for updateConfig", e);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Failed to update config", e);
         }
@@ -149,6 +164,13 @@ public class ConfigLoader {
 
                 Log.i(TAG, "Config reset to default and saved to database");
                 Log.i(TAG, "All components should refresh config from ConfigLoader");
+                // 记录操作历史
+                try {
+                    FileManager fm = new FileManager(context);
+                    fm.appendOperationHistory("Config reset to default (source:ConfigLoader.resetToDefault)");
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to record operation history for resetToDefault", e);
+                }
                 return defaultConfig;
             } else {
                 Log.e(TAG, "Failed to load default config from XML");

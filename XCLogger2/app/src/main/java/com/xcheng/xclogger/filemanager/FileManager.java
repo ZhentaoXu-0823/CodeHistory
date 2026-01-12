@@ -288,6 +288,7 @@ public class FileManager {
         this.currentFileStartTime = 0;
         // 重置日期，确保序列号计算正确
         this.currentDate = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
+        appendOperationHistory("Current log file state reset (reason: stop logging)");
     }
 
     /**
@@ -298,7 +299,6 @@ public class FileManager {
     public synchronized void appendToMainLog(byte[] data, int len) {
         try {
             if (data == null || len <= 0) {
-//                Log.w(TAG, "appendToMainLog called with null data or zero length");
                 return;
             }
 
@@ -340,9 +340,6 @@ public class FileManager {
             }
             long fileSizeAfter = currentMainLogFile.length();
 
-//            Log.d(TAG, "Data written to file: " + currentMainLogFile.getName() +
-//                  ", bytes written: " + len +
-//                  ", file size: " + fileSizeBefore + " -> " + fileSizeAfter);
         } catch (IOException e) {
             Log.e(TAG, "Error writing to log file", e);
             appendOperationHistory("Error writing to log file: " + e.getMessage());

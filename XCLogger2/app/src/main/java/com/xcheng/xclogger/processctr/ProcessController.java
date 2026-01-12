@@ -87,14 +87,16 @@ public class ProcessController {
 
     /**
      * 开始日志记录
-     *
-     * 修复说明：
-     * - 在启动日志前，先刷新ConfigLoader缓存：从数据库读取并覆盖currentConfig，确保打印和解析一致
-     * - 在启动日志前更新FileManager路径
-     * - 每次启动日志时都创建新文件，确保每次开关日志都有独立的文件
-     * - 记录启动操作历史，便于追踪
      */
     public void startLogging() {
+        startLogging("unknown");
+    }
+
+    /**
+     * 开始日志记录（带来源）
+     * @param source 触发来源：user/service/boot/broadcast:<action>/restart 等
+     */
+    public void startLogging(String source) {
         try {
             Log.i(TAG, "Starting logging process");
 
@@ -104,7 +106,7 @@ public class ProcessController {
 
             if (config == null) {
                 Log.e(TAG, "Config is null, cannot start logging");
-                recordOperationHistory("Error: Failed to start logging - config is null");
+                recordOperationHistory("Error: Failed to start logging (source:" + source + ") - config is null");
                 return;
             }
 
@@ -130,10 +132,10 @@ public class ProcessController {
             database.saveRunningState(true);
 
             Log.i(TAG, "Logging process started successfully");
-            recordOperationHistory("Logging started successfully");
+            recordOperationHistory("Logging started successfully (source:" + source + ")");
         } catch (Exception e) {
             Log.e(TAG, "Failed to start logging process", e);
-            recordOperationHistory("Error: Failed to start logging - " + e.getMessage());
+            recordOperationHistory("Error: Failed to start logging (source:" + source + ") - " + e.getMessage());
         }
     }
 
@@ -141,6 +143,14 @@ public class ProcessController {
      * 停止日志记录
      */
     public void stopLogging() {
+        stopLogging("unknown");
+    }
+
+    /**
+     * 停止日志记录（带来源）
+     * @param source 触发来源
+     */
+    public void stopLogging(String source) {
         try {
             Log.i(TAG, "Stopping logging process");
 
@@ -157,10 +167,10 @@ public class ProcessController {
             database.saveRunningState(false);
 
             Log.i(TAG, "Logging process stopped successfully");
-            recordOperationHistory("Logging stopped successfully");
+            recordOperationHistory("Logging stopped successfully (source:" + source + ")");
         } catch (Exception e) {
             Log.e(TAG, "Failed to stop logging process", e);
-            recordOperationHistory("Error: Failed to stop logging - " + e.getMessage());
+            recordOperationHistory("Error: Failed to stop logging (source:" + source + ") - " + e.getMessage());
         }
     }
 

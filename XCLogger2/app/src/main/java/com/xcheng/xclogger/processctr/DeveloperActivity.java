@@ -6,6 +6,7 @@ import android.widget.Button;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.xcheng.xclogger.R;
+import com.xcheng.xclogger.filemanager.FileManager;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
@@ -92,13 +93,31 @@ public class DeveloperActivity extends AppCompatActivity {
 
             if (defaultConfig != null) {
                 Log.i(TAG, "Database reset to default configuration");
+                try {
+                    FileManager fm = new FileManager(this);
+                    fm.appendOperationHistory("Developer reset database to default config (source:DeveloperActivity)");
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to record operation history for developer reset", e);
+                }
                 Toast.makeText(this, "Database reset to default configuration successfully. Please refresh other activities.", Toast.LENGTH_LONG).show();
             } else {
                 Log.e(TAG, "Failed to reset database to default configuration");
+                try {
+                    FileManager fm = new FileManager(this);
+                    fm.appendOperationHistory("Developer reset database failed (source:DeveloperActivity)");
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to record operation history for developer reset failure", e);
+                }
                 Toast.makeText(this, "Failed to reset database to default configuration", Toast.LENGTH_LONG).show();
             }
         } catch (Exception e) {
             Log.e(TAG, "Error resetting database", e);
+            try {
+                FileManager fm = new FileManager(this);
+                fm.appendOperationHistory("Developer reset database error (source:DeveloperActivity): " + e.getMessage());
+            } catch (Exception ex) {
+                Log.w(TAG, "Failed to record operation history for developer reset exception", ex);
+            }
             Toast.makeText(this, "Error resetting database: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }

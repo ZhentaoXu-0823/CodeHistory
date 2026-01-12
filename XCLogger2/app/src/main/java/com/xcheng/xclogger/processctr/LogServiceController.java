@@ -23,8 +23,17 @@ public class LogServiceController {
      * 启动日志服务
      */
     public static void startLogService(Context context) {
+        startLogService(context, "user");
+    }
+
+    /**
+     * 启动日志服务（带来源）
+     * @param source 触发来源，如 user/boot/broadcast:<action>/restart/internal
+     */
+    public static void startLogService(Context context, String source) {
         try {
             Log.i(TAG, "Starting log service");
+            recordOperationHistory(context, "Log service start requested (source:" + source + ")");
 
             // 更新数据库状态
             XcLoggerDatabase database = new XcLoggerDatabase(context);
@@ -38,6 +47,7 @@ public class LogServiceController {
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to start log service", e);
+            recordOperationHistory(context, "Log service start failed (source:" + source + "): " + e.getMessage());
             throw new RuntimeException("Failed to start log service", e);
         }
     }
@@ -46,8 +56,17 @@ public class LogServiceController {
      * 停止日志服务
      */
     public static void stopLogService(Context context) {
+        stopLogService(context, "user");
+    }
+
+    /**
+     * 停止日志服务（带来源）
+     * @param source 触发来源
+     */
+    public static void stopLogService(Context context, String source) {
         try {
             Log.i(TAG, "Stopping log service");
+            recordOperationHistory(context, "Log service stop requested (source:" + source + ")");
 
             // 更新数据库状态
             XcLoggerDatabase database = new XcLoggerDatabase(context);
@@ -61,6 +80,7 @@ public class LogServiceController {
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to stop log service", e);
+            recordOperationHistory(context, "Log service stop failed (source:" + source + "): " + e.getMessage());
             throw new RuntimeException("Failed to stop log service", e);
         }
     }
@@ -82,22 +102,32 @@ public class LogServiceController {
      * 重启服务
      */
     public static void restartService(Context context) {
+        restartService(context, "restart");
+    }
+
+    /**
+     * 重启服务（带来源）
+     * @param source 触发来源
+     */
+    public static void restartService(Context context, String source) {
         try {
             Log.i(TAG, "Restarting log service");
+            recordOperationHistory(context, "Log service restart requested (source:" + source + ")");
 
             // 先停止服务
-            stopLogService(context);
+            stopLogService(context, source);
 
             // 等待一小段时间
             Thread.sleep(1000); // 1秒等待时间
 
             // 再启动服务
-            startLogService(context);
+            startLogService(context, source);
 
             Log.i(TAG, "Log service restarted successfully");
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to restart log service", e);
+            recordOperationHistory(context, "Log service restart failed (source:" + source + "): " + e.getMessage());
             throw new RuntimeException("Failed to restart log service", e);
         }
     }
@@ -107,5 +137,19 @@ public class LogServiceController {
      */
     private static Intent createServiceIntent(Context context) {
         return new Intent(context, LogCaptureService.class);
+    }
+
+    /**
+     * 记录操作历史
+     */
+    private static void recordOperationHistory(Context context, String detail) {
+        try {
+            ProcessController controller = ProcessController.getInstance(context);
+            if (controller != null) {
+                controller.recordOperationHistory(detail);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to record operation history: " + detail, e);
+        }
     }
 }
