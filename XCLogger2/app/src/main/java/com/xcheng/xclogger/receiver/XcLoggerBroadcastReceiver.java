@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
+import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.service.LogCaptureService;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
@@ -16,11 +17,19 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * - handleBootCompleted() - 处理开机完成广播
  * - handleAppUpdated() - 处理应用升级广播
  * - handleMyPackageReplaced() - 处理自身应用替换广播
+ * - handleAdbCmd() - 处理 ADB 命令广播
  * - startLogService() - 启动日志服务
  * - recordOperationHistory() - 记录操作历史
  */
 public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     private static final String TAG = "XcLoggerBroadcastReceiver";
+
+    // ADB 命令广播
+    private static final String ACTION_ADB_CMD = "com.xcheng.xclogger.ADB_CMD";
+    private static final String EXTRA_CMD_NAME = "cmd_name";
+    private static final String CMD_START = "start_xc_log";
+    private static final String CMD_STOP = "stop_xc_log";
+    private static final String CMD_FILE_COMPRESS = "file_compress";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -42,6 +51,10 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
             case Intent.ACTION_MY_PACKAGE_REPLACED:
                 handleMyPackageReplaced(context);
+                break;
+
+            case ACTION_ADB_CMD:
+                handleAdbCmd(context, intent);
                 break;
         }
     }
@@ -102,7 +115,38 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     }
 
     /**
-     * 启动日志服务
+     * 处理 ADB 命令广播
+     */
+    private void handleAdbCmd(Context context, Intent intent) {
+        String cmd = intent.getStringExtra(EXTRA_CMD_NAME);
+        Log.i(TAG, "ADB CMD received: " + cmd);
+
+        if (cmd == null || cmd.isEmpty()) {
+            recordOperationHistory(context, "ADB_CMD received with empty cmd_name");
+            return;
+        }
+
+        switch (cmd) {
+            case CMD_START:
+                LogServiceController.startLogService(context, "broadcast:adb_cmd");
+                recordOperationHistory(context, "ADB_CMD start_xc_log received, service start requested (source:adb_cmd)");
+                break;
+            case CMD_STOP:
+                LogServiceController.stopLogService(context, "broadcast:adb_cmd");
+                recordOperationHistory(context, "ADB_CMD stop_xc_log received, service stop requested (source:adb_cmd)");
+                break;
+            case CMD_FILE_COMPRESS:
+                Log.i(TAG, "File compressing.");
+                recordOperationHistory(context, "ADB_CMD file_compress received, action=File compressing.");
+                break;
+            default:
+                recordOperationHistory(context, "ADB_CMD unknown cmd_name: " + cmd);
+                break;
+        }
+    }
+
+    /**
+     * 启动日志服务（默认来源不区分）
      */
     private void startLogService(Context context) {
         try {
