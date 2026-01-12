@@ -11,6 +11,8 @@ import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * XcLoggerConfigActivity - 配置界面控制器，提供详细的参数配置功能
@@ -25,6 +27,8 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * - initViews() - 初始化UI组件
  * - initData() - 初始化数据
  * - refreshConfigFromLoader() - 从ConfigLoader刷新配置
+ * - isValidFilterLevel(String) - 验证Filter Level格式
+ * - normalizeMultiValue(String) - 规范化多值参数（去除空格，去除空值）
  */
 public class XcLoggerConfigActivity extends AppCompatActivity {
     private static final String TAG = "XcLoggerConfigActivity";
@@ -152,10 +156,47 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             etBufferSize.setHint("Buffer size in bytes");
             etLogDir.setHint("Log directory path");
             etLogPeriod.setHint("Log period in hours");
-            etFilterTag.setHint("Filter tag");
-            etFilterLevel.setHint("Filter level");
-            etFilterPackage.setHint("Filter package");
+            etFilterTag.setHint("Filter tag (multiple values separated by comma, e.g., tag1,tag2)");
+            etFilterLevel.setHint("Filter level (single value: f, e, w, i, d, or v)");
+            etFilterPackage.setHint("Filter package (multiple values separated by comma, e.g., pkg1,pkg2)");
         }
+    }
+
+    /**
+     * 验证Filter Level格式
+     * Filter Level只能设置单个值，可选值：f, e, w, i, d, v
+     * @param level Filter Level字符串
+     * @return 是否有效
+     */
+    private boolean isValidFilterLevel(String level) {
+        if (level == null || level.trim().isEmpty() || level.equalsIgnoreCase("all")) {
+            return true; // "all" 表示不过滤
+        }
+        String normalized = level.trim().toLowerCase();
+        return normalized.equals("f") || normalized.equals("e") ||
+                normalized.equals("w") || normalized.equals("i") ||
+                normalized.equals("d") || normalized.equals("v");
+    }
+
+    /**
+     * 规范化多值参数（去除空格，去除空值）
+     * 用于Filter Tag和Filter Package
+     * @param value 原始值字符串
+     * @return 规范化后的字符串（逗号分隔，无空格）
+     */
+    private String normalizeMultiValue(String value) {
+        if (value == null || value.trim().isEmpty() || value.equalsIgnoreCase("all")) {
+            return "all";
+        }
+        String[] parts = value.split(",");
+        List<String> result = new ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                result.add(trimmed);
+            }
+        }
+        return result.isEmpty() ? "all" : String.join(",", result);
     }
 
     /**
@@ -181,6 +222,20 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
                 oldConfig.setFilterPackage(config.getFilterPackage());
             }
 
+            // 获取并验证Filter Level
+            String filterLevel = etFilterLevel.getText().toString().trim();
+            if (!isValidFilterLevel(filterLevel)) {
+                Toast.makeText(this, "Filter Level设置失败！\n" +
+                        "正确格式：只能设置单个值，可选值：f, e, w, i, d, v\n" +
+                        "当前值：" + filterLevel, Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            // 规范化Filter Tag和Filter Package（去除空格，去除空值）
+            // 注意：这里只存储包名字符串，不涉及UID查询
+            String filterTag = normalizeMultiValue(etFilterTag.getText().toString());
+            String filterPackage = normalizeMultiValue(etFilterPackage.getText().toString());
+
             // 创建新配置
             XcLoggerConfig newConfig = new XcLoggerConfig();
             newConfig.setTotalSizeGb(Integer.parseInt(etTotalSize.getText().toString()));
@@ -188,11 +243,11 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             newConfig.setBufferSizeBytes(Integer.parseInt(etBufferSize.getText().toString()));
             newConfig.setLogDir(etLogDir.getText().toString());
             newConfig.setLogPeriodHours(Integer.parseInt(etLogPeriod.getText().toString()));
-            newConfig.setFilterTag(etFilterTag.getText().toString());
-            newConfig.setFilterLevel(etFilterLevel.getText().toString());
-            newConfig.setFilterPackage(etFilterPackage.getText().toString());
+            newConfig.setFilterTag(filterTag);
+            newConfig.setFilterLevel(filterLevel);
+            newConfig.setFilterPackage(filterPackage);
 
-            // 保存到数据库
+            // 保存到数据库（存储的是包名字符串）
             ConfigLoader.getInstance().updateConfig(this, newConfig);
 
             // 更新FileManager路径（如果log_dir发生变化）

@@ -1,18 +1,27 @@
 package com.xcheng.xclogger.recorder;
 
+import android.content.Context;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.os.SystemClock;
 import android.util.Log;
 
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.util.XcLoggerConfig;
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -23,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * SystemLogCatcher - 系统日志捕获器，执行logcat命令并处理输出
  *
  * 功能方法：
- * - SystemLogCatcher() - 构造函数，初始化日志捕获器
+ * - SystemLogCatcher(Context) - 构造函数，初始化日志捕获器
  * - startCapture(XcLoggerConfig) - 启动日志捕获
  * - stopCapture() - 停止日志捕获
  * - isRunning() - 检查运行状态
@@ -34,6 +43,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * - monitorProcess() - 监控进程状态
  * - isWithinStartupWindow() - 判断是否在开机时间窗口内
  * - calculateTimestampOffset() - 计算时间戳偏移
+ * - parseAndUpdateFilterConfig(XcLoggerConfig) - 解析配置并更新过滤数组容器（包括包名到UID的映射）
+ * - buildTagFilterCommand() - 构建logcat命令的Tag过滤部分
+ * - matchesTagFilter(String) - 验证日志行是否匹配Tag过滤
+ * - matchesLevelFilter(String) - 验证日志行是否匹配Level过滤
+ * - matchesUidFilter(int) - 验证日志行是否匹配UID过滤（通过Package查询UID）
+ * - parseLogLine(String) - 解析日志行，提取Tag、Level、UID信息
+ * - getUidFromPackageName(String) - 通过包名查询UID
  */
 public class SystemLogCatcher {
     private static final String TAG = "SystemLogCatcher";
@@ -43,7 +59,20 @@ public class SystemLogCatcher {
     // 时间戳偏移秒数 - 往前3秒
     private static final int TIMESTAMP_OFFSET_SECONDS = 3;
 
+    // Level优先级映射（f>e>w>i>d>v，数字越小优先级越高）
+    private static final Map<String, Integer> LEVEL_PRIORITY = new HashMap<>();
+    static {
+        LEVEL_PRIORITY.put("f", 0);
+        LEVEL_PRIORITY.put("e", 1);
+        LEVEL_PRIORITY.put("w", 2);
+        LEVEL_PRIORITY.put("i", 3);
+        LEVEL_PRIORITY.put("d", 4);
+        LEVEL_PRIORITY.put("v", 5);
+    }
+
     // 核心组件
+    private Context context;
+    private PackageManager packageManager;
     private Process logcatProcess;
     private ExecutorService executor;
     private AtomicBoolean running = new AtomicBoolean(false);
@@ -51,6 +80,12 @@ public class SystemLogCatcher {
 
     // 数据统计
     private AtomicLong totalBytesRead = new AtomicLong(0);
+
+    // 解析后的过滤配置（数组容器，用于性能优化）
+    private String[] filterTags;           // Tag数组，用于logcat命令和应用层过滤
+    private String filterLevel;             // Level字符串，用于logcat命令和应用层过滤
+    private String[] filterPackages;        // Package数组（仅用于日志记录，不用于过滤）
+    private Set<Integer> filterUidSet;      // UID Set，用于快速查找（性能优化）- 通过包名查询得到
 
     /**
      * 日志行监听器接口
@@ -66,14 +101,18 @@ public class SystemLogCatcher {
 
     /**
      * 构造函数，初始化日志捕获器
+     * @param context Android上下文，用于PackageManager查询UID
      */
-    public SystemLogCatcher() {
+    public SystemLogCatcher(Context context) {
+        this.context = context;
+        this.packageManager = context != null ? context.getPackageManager() : null;
         this.executor = Executors.newCachedThreadPool();
+        Log.d(TAG, "SystemLogCatcher initialized with context: " + (context != null ? "not null" : "null"));
     }
 
     /**
      * 启动日志捕获
-     * @param config 配置对象
+     * @param config 配置对象（包含包名字符串）
      */
     public void startCapture(XcLoggerConfig config) {
         if (running.get()) {
@@ -82,10 +121,10 @@ public class SystemLogCatcher {
         }
 
         try {
-            String logcatCommand = buildLogcatCommand(config);
+            // 解析配置并更新过滤数组容器（包括通过包名查询UID）
+            parseAndUpdateFilterConfig(config);
 
-//            Log.i(TAG, "Executing logcat command: " + logcatCommand);
-//            Log.i(TAG, "Command length: " + logcatCommand.length());
+            String logcatCommand = buildLogcatCommand(config);
 
             // 使用shell执行命令，确保正确处理引号和特殊字符
             String[] shellCommand = new String[]{"sh", "-c", logcatCommand};
@@ -160,7 +199,6 @@ public class SystemLogCatcher {
         }
 
         long totalBytes = totalBytesRead.get();
-//        Log.i(TAG, "LogCatcher stopped, total bytes read: " + totalBytes);
 
         Log.i(TAG, "LogCatcher stopped");
     }
@@ -290,6 +328,263 @@ public class SystemLogCatcher {
     }
 
     /**
+     * 通过包名查询UID
+     * 仅在日志启动时调用，用于建立包名到UID的映射
+     * @param packageName 包名
+     * @return UID，如果查询失败返回-1
+     */
+    private int getUidFromPackageName(String packageName) {
+        if (packageManager == null) {
+            Log.w(TAG, "PackageManager is null, cannot query UID for package: " + packageName);
+            return -1;
+        }
+        if (packageName == null || packageName.isEmpty()) {
+            Log.w(TAG, "Package name is null or empty");
+            return -1;
+        }
+
+        try {
+            ApplicationInfo info = packageManager.getApplicationInfo(packageName, 0);
+            if (info != null) {
+                int uid = info.uid;
+                Log.d(TAG, "Package " + packageName + " mapped to UID: " + uid);
+                return uid;
+            }
+        } catch (PackageManager.NameNotFoundException e) {
+            Log.w(TAG, "Package not found: " + packageName);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting UID for package: " + packageName, e);
+        }
+
+        return -1;
+    }
+
+    /**
+     * 解析配置并更新过滤数组容器
+     * 在启动日志捕获时调用，解析配置字符串为数组容器，用于性能优化
+     * 对于Package过滤，通过包名查询UID并存储到UID Set中（仅在启动时查询一次）
+     * @param config 配置对象（包含包名字符串）
+     */
+    private void parseAndUpdateFilterConfig(XcLoggerConfig config) {
+        Log.d(TAG, "Starting to parse filter config...");
+
+        // 解析Filter Tag
+        if (config != null && config.getFilterTag() != null && !config.getFilterTag().equals("all")) {
+            String[] tags = config.getFilterTag().split(",");
+            List<String> tagList = new ArrayList<>();
+            for (String tag : tags) {
+                String trimmed = tag.trim();
+                if (!trimmed.isEmpty()) {
+                    tagList.add(trimmed);
+                }
+            }
+            filterTags = tagList.toArray(new String[0]);
+            Log.d(TAG, "Filter Tags parsed: " + Arrays.toString(filterTags));
+        } else {
+            filterTags = new String[0];
+            Log.d(TAG, "No Filter Tag configured (all)");
+        }
+
+        // 解析Filter Level
+        if (config != null && config.getFilterLevel() != null && !config.getFilterLevel().equals("all")) {
+            filterLevel = config.getFilterLevel().trim().toLowerCase();
+            Log.d(TAG, "Filter Level parsed: " + filterLevel);
+        } else {
+            filterLevel = null;
+            Log.d(TAG, "No Filter Level configured (all)");
+        }
+
+        // 解析Filter Package并查询对应的UID（仅在启动时查询一次）
+        filterPackages = new String[0];
+        filterUidSet = new HashSet<>();
+
+        if (config != null && config.getFilterPackage() != null && !config.getFilterPackage().equals("all")) {
+            String filterPackageStr = config.getFilterPackage();
+            Log.d(TAG, "Filter Package string from config: " + filterPackageStr);
+
+            String[] packages = filterPackageStr.split(",");
+            List<String> packageList = new ArrayList<>();
+            List<Integer> uidList = new ArrayList<>();
+
+            for (String pkg : packages) {
+                String trimmed = pkg.trim();
+                if (!trimmed.isEmpty()) {
+                    packageList.add(trimmed);
+                    Log.d(TAG, "Processing package: " + trimmed);
+                    // 通过包名查询UID（仅在启动时查询一次）
+                    int uid = getUidFromPackageName(trimmed);
+                    if (uid != -1) {
+                        uidList.add(uid);
+                        Log.i(TAG, "Package " + trimmed + " successfully mapped to UID: " + uid);
+                    } else {
+                        Log.w(TAG, "Failed to get UID for package: " + trimmed + ", this package will be ignored in filtering");
+                    }
+                }
+            }
+
+            filterPackages = packageList.toArray(new String[0]);
+            filterUidSet = new HashSet<>(uidList);
+
+            Log.i(TAG, "Package parsing completed - Packages: " + Arrays.toString(filterPackages) +
+                    ", UIDs: " + filterUidSet);
+
+            if (filterUidSet.isEmpty() && filterPackages.length > 0) {
+                Log.w(TAG, "Warning: No valid UIDs found for filter packages. Package filtering will not work.");
+            } else if (filterUidSet.isEmpty()) {
+                Log.d(TAG, "No Filter Package configured (all)");
+            }
+        } else {
+            Log.d(TAG, "No Filter Package configured (all)");
+        }
+
+        Log.i(TAG, "Filter config parsed - Tags: " + Arrays.toString(filterTags) +
+                ", Level: " + filterLevel + ", Packages: " + Arrays.toString(filterPackages) +
+                ", UIDs: " + filterUidSet);
+    }
+
+    /**
+     * 构建logcat命令的Tag过滤部分
+     * 使用严格过滤模式：*:S 先屏蔽所有，然后启用需要的tag
+     * @return Tag过滤命令字符串，如 "*:S tag1:level tag2:level" 或 ""
+     */
+    private String buildTagFilterCommand() {
+        if (filterTags == null || filterTags.length == 0) {
+            return "";
+        }
+
+        StringBuilder command = new StringBuilder();
+
+        // 使用严格过滤模式：先屏蔽所有，再启用需要的tag
+        command.append(" *:S");
+
+        // 为每个tag添加level过滤
+        for (String tag : filterTags) {
+            if (filterLevel != null) {
+                command.append(" ").append(tag).append(":").append(filterLevel);
+            } else {
+                // 如果没有level，使用V级别（最低级别，输出所有）
+                command.append(" ").append(tag).append(":V");
+            }
+        }
+
+        return command.toString();
+    }
+
+    /**
+     * 验证日志行是否匹配Tag过滤（应用层过滤）
+     * @param tag 日志行的tag
+     * @return 是否匹配
+     */
+    private boolean matchesTagFilter(String tag) {
+        if (filterTags == null || filterTags.length == 0) {
+            return true; // 没有Tag过滤，全部通过
+        }
+        if (tag == null) {
+            return false;
+        }
+        // 检查tag是否在过滤列表中
+        for (String filterTag : filterTags) {
+            if (filterTag.equals(tag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 验证日志行是否匹配Level过滤（应用层过滤）
+     * @param level 日志行的level
+     * @return 是否匹配
+     */
+    private boolean matchesLevelFilter(String level) {
+        if (filterLevel == null) {
+            return true; // 没有Level过滤，全部通过
+        }
+        if (level == null) {
+            return false;
+        }
+
+        String logLevel = level.toLowerCase();
+        Integer configPriority = LEVEL_PRIORITY.get(filterLevel);
+        Integer logPriority = LEVEL_PRIORITY.get(logLevel);
+
+        if (configPriority == null || logPriority == null) {
+            return false;
+        }
+
+        // logLevel的优先级 <= filterLevel的优先级（数字越小优先级越高）
+        // 例如：filterLevel=i(3)，则logLevel可以是i(3), w(2), e(1), f(0)
+        return logPriority <= configPriority;
+    }
+
+    /**
+     * 验证日志行是否匹配UID过滤（应用层过滤）
+     * 通过Package查询到的UID进行过滤
+     * @param uid 日志行的UID
+     * @return 是否匹配
+     */
+    private boolean matchesUidFilter(int uid) {
+        if (filterUidSet == null || filterUidSet.isEmpty()) {
+            return true; // 没有UID过滤，全部通过
+        }
+        // 使用Set快速查找（O(1)时间复杂度）
+        boolean matched = filterUidSet.contains(uid);
+        return matched;
+    }
+
+    /**
+     * 解析日志行，提取Tag、Level、UID信息
+     * 日志格式（threadtime,uid）：MM-DD HH:MM:SS.mmm UID PID TID LEVEL TAG: message
+     * @param line 日志行
+     * @return LogLineInfo对象，包含解析后的信息
+     */
+    private static class LogLineInfo {
+        String tag;
+        String level;
+        int uid = -1;
+    }
+
+    private LogLineInfo parseLogLine(String line) {
+        LogLineInfo info = new LogLineInfo();
+
+        if (line == null || line.trim().isEmpty()) {
+            return info;
+        }
+
+        try {
+            // 使用空格分割日志行
+            String[] parts = line.split("\\s+");
+
+            // 预期最少字段数：日期(0) 时间(1) UID(2) PID(3) TID(4) LEVEL(5) TAG:(6)
+            if (parts.length >= 7) {
+                // UID在索引2（threadtime,uid 格式）
+                try {
+                    info.uid = Integer.parseInt(parts[2]);
+                } catch (NumberFormatException e) {
+                    Log.w(TAG, "Failed to parse UID from log line, part[2]=" + parts[2]);
+                }
+
+                // LEVEL在索引5
+                info.level = parts[5];
+
+                // TAG在索引6，去掉末尾冒号
+                String tagPart = parts[6];
+                if (tagPart.endsWith(":")) {
+                    tagPart = tagPart.substring(0, tagPart.length() - 1);
+                }
+                info.tag = tagPart;
+            } else {
+                Log.w(TAG, "Log line has insufficient parts (" + parts.length + "), expected at least 7. Line: " +
+                        (line.length() > 100 ? line.substring(0, 100) + "..." : line));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to parse log line: " + (line.length() > 100 ? line.substring(0, 100) + "..." : line), e);
+        }
+
+        return info;
+    }
+
+    /**
      * 构建logcat命令
      *
      * 实现说明：
@@ -297,12 +592,16 @@ public class SystemLogCatcher {
      * - 如果开机时间 < 2分钟：不使用 -T 参数（不过滤，读取所有日志）
      * - 如果开机时间 >= 2分钟：使用 -T 参数，传入当前时间往前3秒的时间戳
      * - 时间戳格式：MM-dd HH:mm:ss.SSS
+     * - 使用严格过滤模式：*:S 先屏蔽所有，然后启用需要的tag
      *
      * @param config 配置对象
      * @return logcat命令字符串
      */
     private String buildLogcatCommand(XcLoggerConfig config) {
         StringBuilder command = new StringBuilder("logcat");
+
+        // 添加输出格式（threadtime格式包含UID信息）
+        command.append(" -v threadtime,uid");
 
         // 根据开机时间判断是否需要添加时间戳过滤
         boolean isWithinStartup = isWithinStartupWindow();
@@ -322,25 +621,12 @@ public class SystemLogCatcher {
             Log.i(TAG, "Within startup window, not using timestamp filter");
         }
 
-        if (config != null) {
-            // 添加标签过滤
-            if (config.getFilterTag() != null && !config.getFilterTag().equals("all")) {
-                command.append(" -s ").append(config.getFilterTag());
-            }
-
-            // 添加级别过滤
-            if (config.getFilterLevel() != null && !config.getFilterLevel().equals("all")) {
-                command.append(" *:").append(config.getFilterLevel());
-            }
-
-            // 添加包名过滤（通过PID）
-            if (config.getFilterPackage() != null && !config.getFilterPackage().equals("all")) {
-                command.append(" --pid=").append(config.getFilterPackage());
-            }
+        // 添加Tag和Level过滤（使用严格过滤模式：*:S tag:level）
+        String tagFilterCommand = buildTagFilterCommand();
+        if (!tagFilterCommand.isEmpty()) {
+            command.append(tagFilterCommand);
+            Log.i(TAG, "Added tag filter: " + Arrays.toString(filterTags) + ", level: " + filterLevel);
         }
-
-        // 添加时间戳格式
-        command.append(" -v time");
 
         String finalCommand = command.toString();
         ProcessController processController = ProcessController.getInstance();
@@ -352,10 +638,11 @@ public class SystemLogCatcher {
 
     /**
      * 读取logcat输出
+     * 改为按行读取，添加应用层过滤（Tag、Level、UID）
      */
     private void readLogcatOutput() {
         InputStream inputStream = null;
-        BufferedInputStream bufferedInputStream = null;
+        BufferedReader reader = null;
 
         try {
             if (logcatProcess == null) {
@@ -364,15 +651,21 @@ public class SystemLogCatcher {
             }
 
             inputStream = logcatProcess.getInputStream();
-            bufferedInputStream = new BufferedInputStream(inputStream);
+            reader = new BufferedReader(new InputStreamReader(inputStream));
 
-            byte[] buffer = new byte[8192]; // 8KB缓冲区
-            int bytesRead = -1; // 初始化为-1，避免未初始化错误
-            int readCount = 0;
+            String line;
+            int lineCount = 0;
+            int filteredCount = 0;
+            int tagFilteredCount = 0;
+            int levelFilteredCount = 0;
+            int uidFilteredCount = 0;
+            int savedCount = 0;
             long lastReadTime = System.currentTimeMillis();
 
             Log.i(TAG, "Starting to read logcat output...");
             Log.i(TAG, "Process isAlive: " + (logcatProcess != null ? logcatProcess.isAlive() : "null"));
+            Log.i(TAG, "Filter config - Tags: " + Arrays.toString(filterTags) +
+                    ", Level: " + filterLevel + ", UIDs: " + filterUidSet);
 
             while (running.get()) {
                 // 检查进程是否还存活
@@ -380,7 +673,7 @@ public class SystemLogCatcher {
                     try {
                         int exitValue = logcatProcess.exitValue();
                         Log.e(TAG, "Process exited while reading, exit code: " + exitValue);
-                        if (readCount == 0) {
+                        if (lineCount == 0) {
                             Log.e(TAG, "Process exited before reading any data!");
                         }
                     } catch (IllegalThreadStateException e) {
@@ -388,72 +681,97 @@ public class SystemLogCatcher {
                     }
                 }
 
-                // 先检查是否有可用数据
-                if (bufferedInputStream.available() > 0) {
-                    // 有可用数据，执行读取
-                    bytesRead = bufferedInputStream.read(buffer);
-                    if (bytesRead == -1) {
-                        // 流结束
-                        Log.i(TAG, "Stream ended (EOF)");
-                        break;
+                // 按行读取
+                line = reader.readLine();
+                if (line == null) {
+                    // 流结束
+                    Log.i(TAG, "Stream ended (EOF)");
+                    break;
+                }
+
+                lineCount++;
+                lastReadTime = System.currentTimeMillis();
+
+                if (lineCount == 1) {
+                    Log.i(TAG, "First line received from logcat: " + line.substring(0, Math.min(line.length(), 100)));
+                }
+
+                if (lineCount % 1000 == 0) {
+                    Log.d(TAG, "Read " + lineCount + " lines, filtered: " + filteredCount +
+                            " (tag:" + tagFilteredCount + ", level:" + levelFilteredCount +
+                            ", uid:" + uidFilteredCount + "), saved: " + savedCount +
+                            ", total bytes: " + totalBytesRead.get());
+                }
+
+                // 解析日志行
+                LogLineInfo logInfo = parseLogLine(line);
+
+                // 应用层过滤：Tag、Level、UID
+                boolean tagMatch = matchesTagFilter(logInfo.tag);
+                boolean levelMatch = matchesLevelFilter(logInfo.level);
+                boolean uidMatch = matchesUidFilter(logInfo.uid);
+
+                // 调试日志：前10行详细记录过滤过程
+                if (lineCount <= 10) {
+                    Log.d(TAG, "Line " + lineCount + " - UID: " + logInfo.uid +
+                            ", Level: " + logInfo.level + ", Tag: " + logInfo.tag +
+                            " | TagMatch: " + tagMatch + ", LevelMatch: " + levelMatch +
+                            ", UidMatch: " + uidMatch);
+                }
+
+                // 全部通过才保留
+                if (tagMatch && levelMatch && uidMatch) {
+                    // 匹配所有过滤条件，保留该行
+                    savedCount++;
+                    byte[] lineBytes = line.getBytes();
+                    int lineLength = lineBytes.length;
+                    totalBytesRead.addAndGet(lineLength + 1); // +1 for newline
+
+                    if (running.get() && logLineListener != null) {
+                        // 传递原始字节数据（包含换行符）
+                        byte[] lineWithNewline = new byte[lineLength + 1];
+                        System.arraycopy(lineBytes, 0, lineWithNewline, 0, lineLength);
+                        lineWithNewline[lineLength] = '\n';
+                        logLineListener.onLogLine(lineWithNewline, lineLength + 1);
+                    } else {
+                        Log.w(TAG, "Line matched but logLineListener is null or not running. Line: " +
+                                (line.length() > 100 ? line.substring(0, 100) + "..." : line));
                     }
                 } else {
-                    // 没有可用数据，尝试阻塞读取
-                    bytesRead = bufferedInputStream.read(buffer);
-                    if (bytesRead == -1) {
-                        // 流结束
-                        Log.i(TAG, "Stream ended (EOF)");
-                        break;
+                    // 不匹配过滤条件，过滤掉
+                    filteredCount++;
+                    if (!tagMatch) tagFilteredCount++;
+                    if (!levelMatch) levelFilteredCount++;
+                    if (!uidMatch) uidFilteredCount++;
+
+                    // 调试日志：前10行详细记录为什么被过滤
+                    if (lineCount <= 10) {
+                        Log.d(TAG, "Line " + lineCount + " filtered - TagMatch: " + tagMatch +
+                                ", LevelMatch: " + levelMatch + ", UidMatch: " + uidMatch);
                     }
                 }
 
-                // 处理读取到的数据
-                if (bytesRead > 0) {
-                    readCount++;
-                    totalBytesRead.addAndGet(bytesRead);
-                    lastReadTime = System.currentTimeMillis();
-
-                    if (readCount == 1) {
-                        Log.i(TAG, "First data received from logcat, bytes: " + bytesRead);
-                        // 输出前几个字节用于调试
-                        if (bytesRead > 0 && bytesRead <= 100) {
-                            String preview = new String(buffer, 0, Math.min(bytesRead, 100));
-                            Log.d(TAG, "First data preview: " + preview.replaceAll("[\\r\\n]", " "));
-                        }
-                    }
-
-                    if (readCount % 1000 == 0) {
-                        Log.d(TAG, "Read " + readCount + " times, total bytes: " + totalBytesRead.get());
-                    }
-
-                    if (running.get() && logLineListener != null) {
-                        // 直接传递原始字节数据，保持logcat的原始格式
-                        logLineListener.onLogLine(buffer, bytesRead);
-                    } else {
-                        Log.w(TAG, "logLineListener is null or not running, data will be lost. bytes: " + bytesRead);
-                    }
-                } else if (bytesRead == -1) {
-                    // 流结束，退出循环
-                    break;
-                } else {
-                    // bytesRead == 0，没有数据，短暂休眠避免CPU占用
-                    Thread.sleep(100);
-
-                    // 检查是否长时间没有数据（超过10秒）
-                    long timeSinceLastRead = System.currentTimeMillis() - lastReadTime;
-                    if (readCount > 0 && timeSinceLastRead > 10000) {
-                        Log.w(TAG, "No data received for " + (timeSinceLastRead / 1000) + " seconds");
-                    }
+                // 检查是否长时间没有数据（超过10秒）
+                long timeSinceLastRead = System.currentTimeMillis() - lastReadTime;
+                if (lineCount > 0 && timeSinceLastRead > 10000) {
+                    Log.w(TAG, "No data received for " + (timeSinceLastRead / 1000) + " seconds");
                 }
             }
 
-            Log.i(TAG, "Finished reading logcat output. Total reads: " + readCount + ", total bytes: " + totalBytesRead.get());
+            Log.i(TAG, "Finished reading logcat output. Total lines: " + lineCount +
+                    ", filtered: " + filteredCount + " (tag:" + tagFilteredCount +
+                    ", level:" + levelFilteredCount + ", uid:" + uidFilteredCount +
+                    "), saved: " + savedCount + ", total bytes: " + totalBytesRead.get());
 
-            if (readCount == 0) {
+            if (lineCount == 0) {
                 Log.e(TAG, "WARNING: No data was read from logcat! This may indicate:");
                 Log.e(TAG, "  1. Permission issue - app may not have permission to read logs");
                 Log.e(TAG, "  2. Process exited immediately");
                 Log.e(TAG, "  3. No logs available for the specified time range");
+            } else if (savedCount == 0 && lineCount > 0) {
+                Log.e(TAG, "WARNING: Read " + lineCount + " lines but none were saved! Filter may be too strict.");
+                Log.e(TAG, "Filter config - Tags: " + Arrays.toString(filterTags) +
+                        ", Level: " + filterLevel + ", UIDs: " + filterUidSet);
             }
 
         } catch (IOException e) {
@@ -461,8 +779,6 @@ public class SystemLogCatcher {
                 Log.e(TAG, "Error reading logcat output", e);
                 Log.e(TAG, "Total bytes read before error: " + totalBytesRead.get());
             }
-        } catch (InterruptedException e) {
-            Log.d(TAG, "Read thread interrupted");
         } catch (Exception e) {
             Log.e(TAG, "Unexpected error in readLogcatOutput", e);
         } finally {

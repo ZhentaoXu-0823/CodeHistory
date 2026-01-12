@@ -45,7 +45,8 @@ public class ProcessController {
         this.config = ConfigLoader.getInstance().getCurrentConfig();
         this.fileManager = new FileManager(ctx);
         this.logBuffer = new LogBuffer();
-        this.logCatcher = new SystemLogCatcher();
+        // 传递Context给SystemLogCatcher，用于PackageManager查询UID
+        this.logCatcher = new SystemLogCatcher(ctx);
 
         // 设置日志缓冲区监听器
         this.logBuffer.setOnFlushListener(new LogBuffer.OnFlushListener() {
@@ -88,7 +89,8 @@ public class ProcessController {
      * 开始日志记录
      *
      * 修复说明：
-     * - 在启动日志前，先更新FileManager路径
+     * - 在启动日志前，先刷新ConfigLoader缓存：从数据库读取并覆盖currentConfig，确保打印和解析一致
+     * - 在启动日志前更新FileManager路径
      * - 每次启动日志时都创建新文件，确保每次开关日志都有独立的文件
      * - 记录启动操作历史，便于追踪
      */
@@ -96,13 +98,19 @@ public class ProcessController {
         try {
             Log.i(TAG, "Starting logging process");
 
-            // 更新配置
-            this.config = ConfigLoader.getInstance().getCurrentConfig();
+            // 刷新配置：确保使用数据库最新值并更新ConfigLoader缓存
+            XcLoggerConfig freshConfig = ConfigLoader.getInstance().load(context);
+            this.config = freshConfig != null ? freshConfig : ConfigLoader.getInstance().getCurrentConfig();
+
             if (config == null) {
                 Log.e(TAG, "Config is null, cannot start logging");
                 recordOperationHistory("Error: Failed to start logging - config is null");
                 return;
             }
+
+            Log.d(TAG, "Config loaded - FilterTag: " + config.getFilterTag() +
+                    ", FilterLevel: " + config.getFilterLevel() +
+                    ", FilterPackage: " + config.getFilterPackage());
 
             // 更新FileManager路径（关键：确保路径是最新的）
             fileManager.updatePaths();
@@ -115,7 +123,7 @@ public class ProcessController {
                 Log.w(TAG, "Failed to create log file, will create when first data arrives");
             }
 
-            // 开始日志捕获
+            // 开始日志捕获（此时会解析配置，包括包名到UID的映射）
             logCatcher.startCapture(config);
 
             // 更新数据库状态
