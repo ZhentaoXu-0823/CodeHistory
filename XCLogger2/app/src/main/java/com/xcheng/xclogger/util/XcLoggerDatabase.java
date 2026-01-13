@@ -4,16 +4,13 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
-/**
- * XcLoggerDatabase - 数据库管理模块，负责配置和状态的持久化存储
- */
 public class XcLoggerDatabase {
     private static final String TAG = "XcLoggerDatabase";
     private static final String PREFS_NAME = "XcLoggerPrefs";
     private static final String K_VERSION = "database_version";
     private static final String K_OPERATION_HISTORY_PATH = "operation_history_path";
 
-    // 配置相关键名（与XML标签名一致）
+    // 配置键
     private static final String K_TOTAL_SIZE = "total_size";
     private static final String K_FILE_SIZE = "file_size";
     private static final String K_BUFFER_SIZE = "buffer_size";
@@ -22,9 +19,10 @@ public class XcLoggerDatabase {
     private static final String K_FILTER_TAG = "filter_tag";
     private static final String K_FILTER_LEVEL = "filter_level";
     private static final String K_FILTER_PACKAGE = "filter_package";
-    public static final String K_IS_RUNNING = "is_running";
 
-    // SharedPreferences实例
+    public static final String K_IS_RUNNING = "is_running";
+    public static final String K_FILE_INDEX = "file_index"; // 全局日志文件序号
+
     private final SharedPreferences prefs;
 
     public SharedPreferences getPrefs() {

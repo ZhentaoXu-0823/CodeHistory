@@ -42,6 +42,10 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".filemanager.FileCompressService"
+            android:enabled="true"
+            android:exported="false" />
 
         <!-- 广播接收器 -->
         <receiver
@@ -60,6 +64,9 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="com.xcheng.xclogger.ADB_CMD" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.xcheng.xclogger.FILE_COMPRESS" />
             </intent-filter>
         </receiver>
     </application>

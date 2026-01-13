@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
+import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.service.LogCaptureService;
@@ -11,15 +12,6 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 /**
  * XcLoggerBroadcastReceiver - 统一广播接收器
- *
- * 功能方法：
- * - onReceive() - 接收广播并分发处理
- * - handleBootCompleted() - 处理开机完成广播
- * - handleAppUpdated() - 处理应用升级广播
- * - handleMyPackageReplaced() - 处理自身应用替换广播
- * - handleAdbCmd() - 处理 ADB 命令广播
- * - startLogService() - 启动日志服务
- * - recordOperationHistory() - 记录操作历史
  */
 public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     private static final String TAG = "XcLoggerBroadcastReceiver";
@@ -30,6 +22,9 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     private static final String CMD_START = "start_xc_log";
     private static final String CMD_STOP = "stop_xc_log";
     private static final String CMD_FILE_COMPRESS = "file_compress";
+
+    // 文件压缩广播（大写）
+    private static final String ACTION_FILE_COMPRESS = "com.xcheng.xclogger.FILE_COMPRESS";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -56,67 +51,46 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
             case ACTION_ADB_CMD:
                 handleAdbCmd(context, intent);
                 break;
+
+            case ACTION_FILE_COMPRESS:
+                startFileCompressService(context, intent);
+                break;
         }
     }
 
-    /**
-     * 处理开机完成广播
-     */
     private void handleBootCompleted(Context context) {
-        Log.i(TAG, "Boot completed, checking if service should start");
-
         try {
             XcLoggerDatabase database = new XcLoggerDatabase(context);
             boolean shouldRun = database.loadRunningState();
-
             if (shouldRun) {
-                Log.i(TAG, "Starting service after boot");
                 startLogService(context);
                 recordOperationHistory(context, "Service auto-started after boot");
-            } else {
-                Log.i(TAG, "Service not configured to run, skipping");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error handling boot completed", e);
         }
     }
 
-    /**
-     * 处理应用升级广播
-     */
     private void handleAppUpdated(Context context, Intent intent) {
         String packageName = intent.getDataString();
         if (packageName != null && packageName.contains(context.getPackageName())) {
-            Log.i(TAG, "App updated, restarting service if needed");
             handleMyPackageReplaced(context);
         }
     }
 
-    /**
-     * 处理自身应用替换广播
-     */
     private void handleMyPackageReplaced(Context context) {
-        Log.i(TAG, "My package replaced, checking service status");
-
         try {
             XcLoggerDatabase database = new XcLoggerDatabase(context);
             boolean shouldRun = database.loadRunningState();
-
             if (shouldRun) {
-                Log.i(TAG, "Restarting service after app update");
                 startLogService(context);
                 recordOperationHistory(context, "Service restarted after app update");
-            } else {
-                Log.i(TAG, "Service not configured to run after update");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error handling package replaced", e);
         }
     }
 
-    /**
-     * 处理 ADB 命令广播
-     */
     private void handleAdbCmd(Context context, Intent intent) {
         String cmd = intent.getStringExtra(EXTRA_CMD_NAME);
         Log.i(TAG, "ADB CMD received: " + cmd);
@@ -136,8 +110,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
                 recordOperationHistory(context, "ADB_CMD stop_xc_log received, service stop requested (source:adb_cmd)");
                 break;
             case CMD_FILE_COMPRESS:
-                Log.i(TAG, "File compressing.");
-                recordOperationHistory(context, "ADB_CMD file_compress received, action=File compressing.");
+                startFileCompressService(context, intent);
                 break;
             default:
                 recordOperationHistory(context, "ADB_CMD unknown cmd_name: " + cmd);
@@ -145,28 +118,37 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         }
     }
 
-    /**
-     * 启动日志服务（默认来源不区分）
-     */
+    private void startFileCompressService(Context context, Intent srcIntent) {
+        try {
+            Intent serviceIntent = new Intent(context, FileCompressService.class);
+            // 保留请求方包名，用于定向回发
+            if (srcIntent.getPackage() != null) {
+                serviceIntent.setPackage(srcIntent.getPackage());
+            }
+            context.startService(serviceIntent);
+            recordOperationHistory(context, "File compress service requested");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start FileCompressService", e);
+            recordOperationHistory(context, "Error: Failed to start FileCompressService - " + e.getMessage());
+        }
+    }
+
     private void startLogService(Context context) {
         try {
             Intent serviceIntent = new Intent(context, LogCaptureService.class);
             context.startForegroundService(serviceIntent);
-            Log.i(TAG, "Log service started");
         } catch (Exception e) {
             Log.e(TAG, "Failed to start log service", e);
             recordOperationHistory(context, "Error: Failed to start service - " + e.getMessage());
         }
     }
 
-    /**
-     * 记录操作历史
-     */
     private void recordOperationHistory(Context context, String operation) {
         try {
-            // 通过ProcessController记录操作历史
             ProcessController controller = ProcessController.getInstance(context);
-            controller.recordOperationHistory(operation);
+            if (controller != null) {
+                controller.recordOperationHistory(operation);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Failed to record operation history", e);
         }
