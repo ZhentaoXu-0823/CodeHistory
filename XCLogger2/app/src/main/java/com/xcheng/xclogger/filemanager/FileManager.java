@@ -9,6 +9,7 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -29,6 +30,8 @@ public class FileManager {
     private static final long MIN_FILE_LIFETIME_MS = 10 * 1000;
 
     private static final String DEFAULT_OPERATION_HISTORY_PATH = "/storage/emulated/0/XcLogger";
+    private static final String COMPRESS_OUTPUT_DIR = "/data/xclogger/mobilelog";
+    private static final SimpleDateFormat ZIP_DATE_FORMAT = new SimpleDateFormat("yyyy_MMdd", Locale.getDefault());
 
     private Context context;
     private XcLoggerConfig config;
@@ -288,6 +291,7 @@ public class FileManager {
                 deleteOldestFileForSpace();
             }
             deleteFilesExceedingTimeLimit(newFileTime);
+            deleteZipExceedingTimeLimit(newFileTime); // 检查压缩目录的过期 zip（按文件名日期）
         } catch (Exception e) {
             Log.e(TAG, "Error checking and cleaning files", e);
         }
@@ -355,6 +359,73 @@ public class FileManager {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error deleting files exceeding time limit", e);
+        }
+    }
+
+    /**
+     * 删除压缩目录中过期的 zip 文件（不处理操作历史文件）
+     * 过期判断优先用文件名日期（yyyy_MMdd），取当日 00:00:00.000 作为基准；无法解析则回退 lastModified
+     */
+    private void deleteZipExceedingTimeLimit(long newFileTime) {
+        if (config == null) {
+            return;
+        }
+        try {
+            long timeLimitMs = config.getLogPeriodHours() * 60L * 60L * 1000L;
+            File zipDir = new File(COMPRESS_OUTPUT_DIR);
+            if (!zipDir.exists() || !zipDir.isDirectory()) {
+                return;
+            }
+            File[] files = zipDir.listFiles(f -> f.isFile() && f.getName().endsWith(".zip"));
+            if (files == null || files.length == 0) {
+                return;
+            }
+            Arrays.sort(files, Comparator.comparingLong(File::lastModified));
+            for (File file : files) {
+                long baseTime = getZipDateStartOfDay(file.getName());
+                if (baseTime < 0) {
+                    baseTime = file.lastModified(); // 解析失败回退 mtime
+                }
+                long timeDiff = newFileTime - baseTime;
+                if (timeDiff > timeLimitMs) {
+                    long fileSize = file.length();
+                    if (file.delete()) {
+                        Log.i(TAG, "Deleted zip exceeding time limit: " + file.getName() + " (time diff: " + (timeDiff / 1000 / 60) + " minutes)");
+                        appendOperationHistory("Log zip deleted (time limit): " + file.getAbsolutePath() + " (size: " + fileSize + " bytes)");
+                    } else {
+                        Log.w(TAG, "Failed to delete zip exceeding time limit: " + file.getName());
+                    }
+                } else {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error deleting zip files exceeding time limit", e);
+        }
+    }
+
+    /**
+     * 从 zip 文件名解析日期（yyyy_MMdd），返回该日 00:00:00.000 的时间戳；解析失败返回 -1
+     */
+    private long getZipDateStartOfDay(String name) {
+        try {
+            // 期望形如 2025_1201_xxxx.zip
+            String[] parts = name.split("_");
+            if (parts.length < 2) {
+                return -1;
+            }
+            String yyyy = parts[0];
+            String mmddPart = parts[1];
+            if (yyyy.length() != 4 || mmddPart.length() != 4) {
+                return -1;
+            }
+            String dateStr = yyyy + "_" + mmddPart;
+            Date date = ZIP_DATE_FORMAT.parse(dateStr);
+            if (date == null) return -1;
+            // 当天 00:00:00.000
+            return date.getTime();
+        } catch (ParseException e) {
+            return -1;
         }
     }
 
@@ -441,7 +512,7 @@ public class FileManager {
             String time = new SimpleDateFormat("HHmmss", Locale.getDefault()).format(new Date());
             int sequence = getSequenceNumber();
             String indexStr = String.format(Locale.getDefault(), "%06d", getCurrentGlobalIndex());
-            return LOG_FILE_PREFIX + indexStr + "_" + today + "_" + time + "_" + String.format("%04d", sequence) + LOG_FILE_EXTENSION;
+            return LOG_FILE_PREFIX + indexStr + "_" + today + "_" + time + "_" + String.format(Locale.getDefault(), "%04d", sequence) + LOG_FILE_EXTENSION;
         } catch (Exception e) {
             Log.e(TAG, "Error generating file name", e);
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
@@ -467,7 +538,6 @@ public class FileManager {
                     if (name.startsWith(LOG_FILE_PREFIX) && name.contains(today)) {
                         try {
                             String[] parts = name.split("_");
-                            // 期望 mainlog_<idx6>_<yyyyMMdd>_<HHmmss>_<seq>.txt
                             if (parts.length >= 5) {
                                 String seqStr = parts[4].replace(LOG_FILE_EXTENSION, "");
                                 if (seqStr.matches("\\d+")) {
@@ -475,7 +545,6 @@ public class FileManager {
                                     maxSequence = Math.max(maxSequence, sequence);
                                 }
                             } else if (parts.length >= 3) {
-                                // 兼容旧格式 mainlog_yyyyMMdd_HHmmss_seq
                                 String seqStr = parts[3].replace(LOG_FILE_EXTENSION, "");
                                 if (seqStr.matches("\\d+")) {
                                     int sequence = Integer.parseInt(seqStr);
