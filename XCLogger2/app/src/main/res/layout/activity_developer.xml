@@ -35,6 +35,36 @@
         android:background="@drawable/bg_rounded_gray"
         android:layout_marginBottom="16dp" />
 
+    <!-- 加密相关按钮行 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp"
+        android:gravity="center">
+
+        <Button
+            android:id="@+id/btn_toggle_encryption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Encryption: OFF"
+            android:textSize="16sp"
+            android:padding="16dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/btn_decrypt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Decrypt Latest"
+            android:textSize="16sp"
+            android:padding="16dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:layout_marginStart="8dp" />
+
+    </LinearLayout>
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

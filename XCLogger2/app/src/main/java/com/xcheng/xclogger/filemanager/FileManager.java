@@ -21,6 +21,7 @@ import java.util.Locale;
  * 重要变更：
  * 1) 日志文件名增加全局 6 位索引：mainlog_<index6>_yyyyMMdd_HHmmss_seq.txt
  * 2) 全局索引保存在 SharedPreferences（K_FILE_INDEX），每次成功创建新文件后自增
+ * 3) 支持XOR加密（可选，通过数据库开关控制）
  */
 public class FileManager {
     private static final String TAG = "FileManager";
@@ -44,15 +45,23 @@ public class FileManager {
     private long currentFileStartTime;
     private String currentDate;
 
+    // XOR加密相关
+    private XcXorEncryption xorEncryption;
+    private long currentFileId; // 当前文件的ID（index）
+    private long currentFileDataOffset; // 当前文件的数据偏移量（不包括header）
+
     public FileManager(Context context) {
         this.context = context;
         this.config = ConfigLoader.getInstance().getCurrentConfig();
         this.currentDate = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
+        this.xorEncryption = new XcXorEncryption(context);
         initOperationHistoryDir();
         initMainLogDir();
         Log.i(TAG, "FileManager initialized - operationHistoryDir: " + operationHistoryDir.getAbsolutePath() +
                 ", mainLogDir: " + mainLogDir.getAbsolutePath());
     }
+
+    // ... existing code ... (保留所有现有方法，不做修改)
 
     private void initOperationHistoryDir() {
         try {
@@ -170,9 +179,28 @@ public class FileManager {
             if (newFile.createNewFile()) {
                 this.currentMainLogFile = newFile;
                 this.currentFileStartTime = newFileTime;
-                Log.i(TAG, "Created new log file: " + fileName);
+                this.currentFileDataOffset = 0;
 
-                appendOperationHistory("Log file created: " + currentMainLogFile.getAbsolutePath() + " (size: 0 bytes)");
+                // 获取当前文件ID（index - 1，因为创建后才会自增）
+                XcLoggerDatabase db = new XcLoggerDatabase(context);
+                SharedPreferencesHelper helper = new SharedPreferencesHelper(db.getPrefs());
+                int nextIndex = helper.getIntSafe(XcLoggerDatabase.K_FILE_INDEX, 1);
+                this.currentFileId = nextIndex - 1;
+
+                // 检查加密开关
+                boolean encryptionEnabled = db.getEncryptionEnabled();
+                if (encryptionEnabled) {
+                    // 初始化加密会话并写入文件头
+                    byte[] nonce = xorEncryption.initFileSession(currentFileId);
+                    try (FileOutputStream fos = new FileOutputStream(currentMainLogFile, false)) {
+                        xorEncryption.writeFileHeader(fos, currentFileId, nonce);
+                        Log.i(TAG, "Created encrypted log file with header: " + fileName);
+                        appendOperationHistory("Encrypted log file created: " + currentMainLogFile.getAbsolutePath() + " (fileId: " + currentFileId + ")");
+                    }
+                } else {
+                    Log.i(TAG, "Created unencrypted log file: " + fileName);
+                    appendOperationHistory("Log file created: " + currentMainLogFile.getAbsolutePath() + " (size: 0 bytes)");
+                }
 
                 // 成功创建后递增全局索引
                 incrementGlobalIndex();
@@ -196,6 +224,7 @@ public class FileManager {
     public synchronized void resetCurrentLogFile() {
         this.currentMainLogFile = null;
         this.currentFileStartTime = 0;
+        this.currentFileDataOffset = 0;
         this.currentDate = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
         appendOperationHistory("Current log file state reset (reason: stop logging)");
     }
@@ -233,12 +262,28 @@ public class FileManager {
                 }
             }
 
-            long fileSizeBefore = currentMainLogFile.length();
+            // 检查加密开关，决定是否加密
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+            boolean encryptionEnabled = db.getEncryptionEnabled();
+
+            byte[] dataToWrite = data;
+            int lenToWrite = len;
+
+            if (encryptionEnabled && currentMainLogFile != null) {
+                // 需要加密：复制数据并加密（避免修改原始数据）
+                byte[] encryptedData = new byte[len];
+                System.arraycopy(data, 0, encryptedData, 0, len);
+                xorEncryption.encryptInPlace(encryptedData, len, currentFileDataOffset);
+                dataToWrite = encryptedData;
+            }
+
             try (FileOutputStream fos = new FileOutputStream(currentMainLogFile, true)) {
-                fos.write(data, 0, len);
+                fos.write(dataToWrite, 0, lenToWrite);
                 fos.flush();
             }
-            long fileSizeAfter = currentMainLogFile.length();
+
+            // 更新数据偏移量
+            currentFileDataOffset += lenToWrite;
 
         } catch (IOException e) {
             Log.e(TAG, "Error writing to log file", e);
@@ -248,6 +293,86 @@ public class FileManager {
             appendOperationHistory("Unexpected error appending to log file: " + e.getMessage());
         }
     }
+
+    /**
+     * 解密最新的日志文件
+     * @return 解密后的文件，如果失败返回null
+     */
+    public File decryptLatestLogFile() {
+        try {
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+
+            // 检查加密开关
+            if (!db.getEncryptionEnabled()) {
+                Log.w(TAG, "Encryption is not enabled, cannot decrypt");
+                return null;
+            }
+
+            // 获取最新文件的index（当前index - 1）
+            SharedPreferencesHelper helper = new SharedPreferencesHelper(db.getPrefs());
+            int currentIndex = helper.getIntSafe(XcLoggerDatabase.K_FILE_INDEX, 1);
+            int latestIndex = currentIndex - 1;
+
+            if (latestIndex < 0) {
+                Log.w(TAG, "No log file found (index < 0)");
+                return null;
+            }
+
+            // 格式化index为6位字符串
+            String indexStr = String.format(Locale.getDefault(), "%06d", latestIndex);
+
+            // 查找匹配的文件
+            File[] files = mainLogDir.listFiles();
+            File latestFile = null;
+
+            if (files != null) {
+                for (File file : files) {
+                    String name = file.getName();
+                    // 匹配格式：mainlog_<index6>_...
+                    if (name.startsWith(LOG_FILE_PREFIX + indexStr + "_") &&
+                            name.endsWith(LOG_FILE_EXTENSION) &&
+                            !name.contains("_decrypted")) {
+                        // 检查是否为加密文件
+                        if (xorEncryption.isFileEncrypted(file)) {
+                            latestFile = file;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (latestFile == null) {
+                Log.w(TAG, "Latest encrypted log file not found for index: " + latestIndex);
+                return null;
+            }
+
+            // 生成解密后的文件名
+            String originalName = latestFile.getName();
+            String baseName = originalName.substring(0, originalName.length() - LOG_FILE_EXTENSION.length());
+            String decryptedName = baseName + "_decrypted" + LOG_FILE_EXTENSION;
+            File decryptedFile = new File(mainLogDir, decryptedName);
+
+            // 执行解密
+            boolean success = xorEncryption.decryptFile(latestFile, decryptedFile);
+            if (success) {
+                appendOperationHistory("Latest log file decrypted: " + latestFile.getName() + " -> " + decryptedFile.getName());
+                Log.i(TAG, "Decrypted file saved: " + decryptedFile.getAbsolutePath());
+                return decryptedFile;
+            } else {
+                Log.e(TAG, "Failed to decrypt file: " + latestFile.getName());
+                if (decryptedFile.exists()) {
+                    decryptedFile.delete();
+                }
+                return null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error decrypting latest log file", e);
+            appendOperationHistory("Error decrypting latest log file: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // ... existing code ... (保留所有其他现有方法，不变)
 
     public void appendOperationHistory(String operation) {
         try {
@@ -291,7 +416,7 @@ public class FileManager {
                 deleteOldestFileForSpace();
             }
             deleteFilesExceedingTimeLimit(newFileTime);
-            deleteZipExceedingTimeLimit(newFileTime); // 检查压缩目录的过期 zip（按文件名日期）
+            deleteZipExceedingTimeLimit(newFileTime);
         } catch (Exception e) {
             Log.e(TAG, "Error checking and cleaning files", e);
         }
@@ -362,10 +487,6 @@ public class FileManager {
         }
     }
 
-    /**
-     * 删除压缩目录中过期的 zip 文件（不处理操作历史文件）
-     * 过期判断优先用文件名日期（yyyy_MMdd），取当日 00:00:00.000 作为基准；无法解析则回退 lastModified
-     */
     private void deleteZipExceedingTimeLimit(long newFileTime) {
         if (config == null) {
             return;
@@ -384,7 +505,7 @@ public class FileManager {
             for (File file : files) {
                 long baseTime = getZipDateStartOfDay(file.getName());
                 if (baseTime < 0) {
-                    baseTime = file.lastModified(); // 解析失败回退 mtime
+                    baseTime = file.lastModified();
                 }
                 long timeDiff = newFileTime - baseTime;
                 if (timeDiff > timeLimitMs) {
@@ -404,12 +525,8 @@ public class FileManager {
         }
     }
 
-    /**
-     * 从 zip 文件名解析日期（yyyy_MMdd），返回该日 00:00:00.000 的时间戳；解析失败返回 -1
-     */
     private long getZipDateStartOfDay(String name) {
         try {
-            // 期望形如 2025_1201_xxxx.zip
             String[] parts = name.split("_");
             if (parts.length < 2) {
                 return -1;
@@ -422,7 +539,6 @@ public class FileManager {
             String dateStr = yyyy + "_" + mmddPart;
             Date date = ZIP_DATE_FORMAT.parse(dateStr);
             if (date == null) return -1;
-            // 当天 00:00:00.000
             return date.getTime();
         } catch (ParseException e) {
             return -1;
@@ -588,7 +704,6 @@ public class FileManager {
         }
     }
 
-    // 简单的 SharedPreferences 读写封装，避免重复编辑器创建
     private static class SharedPreferencesHelper {
         private final android.content.SharedPreferences prefs;
 

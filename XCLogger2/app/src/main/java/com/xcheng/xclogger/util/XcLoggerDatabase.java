@@ -23,6 +23,9 @@ public class XcLoggerDatabase {
     public static final String K_IS_RUNNING = "is_running";
     public static final String K_FILE_INDEX = "file_index"; // 全局日志文件序号
 
+    // 加密开关键
+    private static final String K_ENCRYPTION_ENABLED = "encryption_enabled";
+
     private final SharedPreferences prefs;
 
     public SharedPreferences getPrefs() {
@@ -87,6 +90,30 @@ public class XcLoggerDatabase {
         } catch (Exception e) {
             Log.e(TAG, "Failed to load running state", e);
             return false;
+        }
+    }
+
+    /**
+     * 获取加密开关状态（默认关闭）
+     */
+    public boolean getEncryptionEnabled() {
+        try {
+            return prefs.getBoolean(K_ENCRYPTION_ENABLED, false);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load encryption enabled state", e);
+            return false;
+        }
+    }
+
+    /**
+     * 设置加密开关状态
+     */
+    public void setEncryptionEnabled(boolean enabled) {
+        try {
+            prefs.edit().putBoolean(K_ENCRYPTION_ENABLED, enabled).apply();
+            Log.i(TAG, "Encryption enabled state saved: " + enabled);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save encryption enabled state", e);
         }
     }
 

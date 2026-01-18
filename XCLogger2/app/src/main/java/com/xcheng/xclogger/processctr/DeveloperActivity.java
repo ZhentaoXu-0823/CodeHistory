@@ -18,6 +18,8 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * - printDb() - 打印数据库配置信息
  * - resetDatabase() - 重置数据库为默认配置
  * - checkLogRunningState() - 检查日志运行状态
+ * - toggleEncryption() - 切换加密开关
+ * - decryptLatestFile() - 解密最新的日志文件
  */
 public class DeveloperActivity extends AppCompatActivity {
     private static final String TAG = "DeveloperActivity";
@@ -25,9 +27,12 @@ public class DeveloperActivity extends AppCompatActivity {
     // UI组件
     private Button btnPrintDb;
     private Button btnResetDb;
+    private Button btnToggleEncryption;
+    private Button btnDecrypt;
 
     // 数据相关
     private XcLoggerDatabase database;
+    private FileManager fileManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,9 +41,13 @@ public class DeveloperActivity extends AppCompatActivity {
 
         // 初始化数据库
         database = new XcLoggerDatabase(this);
+        fileManager = new FileManager(this);
 
         // 初始化UI组件
         initViews();
+
+        // 更新加密开关按钮文本
+        updateEncryptionButtonText();
     }
 
     /**
@@ -47,9 +56,84 @@ public class DeveloperActivity extends AppCompatActivity {
     private void initViews() {
         btnPrintDb = findViewById(R.id.btn_print_db);
         btnResetDb = findViewById(R.id.btn_reset_db);
+        btnToggleEncryption = findViewById(R.id.btn_toggle_encryption);
+        btnDecrypt = findViewById(R.id.btn_decrypt);
 
         btnPrintDb.setOnClickListener(v -> printDb());
         btnResetDb.setOnClickListener(v -> resetDatabase());
+        btnToggleEncryption.setOnClickListener(v -> toggleEncryption());
+        btnDecrypt.setOnClickListener(v -> decryptLatestFile());
+    }
+
+    /**
+     * 更新加密开关按钮文本
+     */
+    private void updateEncryptionButtonText() {
+        boolean enabled = database.getEncryptionEnabled();
+        btnToggleEncryption.setText("Encryption: " + (enabled ? "ON" : "OFF"));
+    }
+
+    /**
+     * 切换加密开关
+     */
+    private void toggleEncryption() {
+        // 检查日志运行状态
+        if (checkLogRunningState()) {
+            Toast.makeText(this, "Please stop XcLogger first before toggling encryption", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            boolean currentState = database.getEncryptionEnabled();
+            boolean newState = !currentState;
+            database.setEncryptionEnabled(newState);
+
+            updateEncryptionButtonText();
+
+            // 记录操作历史
+            try {
+                fileManager.appendOperationHistory("Encryption " + (newState ? "enabled" : "disabled") + " (source:DeveloperActivity)");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to record operation history for encryption toggle", e);
+            }
+
+            Toast.makeText(this, "Encryption " + (newState ? "enabled" : "disabled"), Toast.LENGTH_SHORT).show();
+            Log.i(TAG, "Encryption toggled to: " + newState);
+        } catch (Exception e) {
+            Log.e(TAG, "Error toggling encryption", e);
+            Toast.makeText(this, "Error toggling encryption: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * 解密最新的日志文件
+     */
+    private void decryptLatestFile() {
+        // 检查日志运行状态
+        if (checkLogRunningState()) {
+            Toast.makeText(this, "Please stop XcLogger first before decrypting file", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // 检查加密开关
+        if (!database.getEncryptionEnabled()) {
+            Toast.makeText(this, "Encryption is not enabled, cannot decrypt", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            java.io.File decryptedFile = fileManager.decryptLatestLogFile();
+            if (decryptedFile != null) {
+                Toast.makeText(this, "File decrypted successfully: " + decryptedFile.getName(), Toast.LENGTH_LONG).show();
+                Log.i(TAG, "Latest log file decrypted: " + decryptedFile.getAbsolutePath());
+            } else {
+                Toast.makeText(this, "Failed to decrypt latest log file", Toast.LENGTH_LONG).show();
+                Log.e(TAG, "Failed to decrypt latest log file");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error decrypting latest file", e);
+            Toast.makeText(this, "Error decrypting file: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     /**
@@ -73,6 +157,7 @@ public class DeveloperActivity extends AppCompatActivity {
         Log.i(TAG, "filter_level=" + config.getFilterLevel());
         Log.i(TAG, "filter_package=" + config.getFilterPackage());
         Log.i(TAG, "is_running=" + database.loadRunningState());
+        Log.i(TAG, "encryption_enabled=" + database.getEncryptionEnabled());
         Log.i(TAG, "operation_history_path=" + database.getOperationHistoryPath());
         Log.i(TAG, "=== End of Configuration Info ===");
     }

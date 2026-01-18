@@ -11,14 +11,16 @@ android {
         minSdk 29
         targetSdk 33
         versionCode 1
-        versionName "1.1.0"
+        versionName "1.1.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            // 启用混淆与资源压缩
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -28,28 +30,21 @@ android {
     }
 
     applicationVariants.all { variant ->
-        def baseName = "XCLogger" // APK基础名称
+        def baseName = "XCLogger"
         def buildType = variant.buildType.name
         def versionName = variant.versionName ?: "V1.0.0"
         def versionCode = variant.versionCode ?: 1
         def timestamp = new Date().format("yyyyMMddHHmm")
         def apkName
 
-        // 根据构建类型应用不同命名规则
         if (buildType == "debug") {
-            // Debug版本：[APK Name]_[Build Type].apk
-//            apkName = "${baseName}_${buildType}.apk"
-            // Release版本：[APK Name]_v[Release Version]_[Timestamp].apk
             apkName = "${baseName}_v${versionName}_${timestamp}.apk"
         } else {
-            // Release版本：[APK Name]_v[Release Version]_[Timestamp].apk
             apkName = "${baseName}_v${versionName}_${timestamp}.apk"
         }
 
-        // 过滤非法字符
         apkName = apkName.replaceAll("[^a-zA-Z0-9_.-]", "_")
 
-        // 应用文件名
         variant.outputs.each { output ->
             output.outputFileName = apkName
         }
@@ -57,7 +52,6 @@ android {
 }
 
 dependencies {
-
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.8.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
