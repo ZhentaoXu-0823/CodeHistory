@@ -1,3 +1,57 @@
-﻿<resources>
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App General -->
     <string name="app_name">XCLogger</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+
+    <!-- MainActivity -->
+    <string name="main_title">XcLogger</string>
+    <string name="btn_detail">DETAIL</string>
+    <string name="state_running">XcLogger is Running</string>
+    <string name="state_stopped">XcLogger has stopped</string>
+    <string name="permission_denied">Permission denied. App will exit.</string>
+    <string name="dialog_edit_path_title">Edit log path</string>
+    <string name="warn_stop_log_first">Log is running, please stop log first before modifying file path</string>
+    <string name="dialog_enter_code">Enter Code</string>
+    <string name="err_toggle_state_failed">Failed to toggle logging state: %1$s</string>
+
+    <!-- XcLoggerConfigActivity -->
+    <string name="config_title">Config</string>
+    <string name="btn_save_config">SAVE</string>
+    <string name="warn_config_disabled">Log is running, configuration modification is disabled</string>
+    <string name="hint_total_size">Total size in GB</string>
+    <string name="hint_file_size">File size in MB</string>
+    <string name="hint_buffer_size">Buffer size in bytes</string>
+    <string name="hint_log_dir">Log directory path</string>
+    <string name="hint_log_period">Log period in hours</string>
+    <string name="hint_filter_tag">Filter tag (multiple values separated by comma, e.g., tag1,tag2)</string>
+    <string name="hint_filter_level">Filter level (single value: f, e, w, i, d, or v)</string>
+    <string name="hint_filter_package">Filter package (multiple values separated by comma, e.g., pkg1,pkg2)</string>
+    <string name="err_invalid_filter_level">Filter Level setting failed!\nCorrect format: single value, optional: f, e, w, i, d, v\nCurrent: %1$s</string>
+    <string name="msg_config_save_success">Configuration saved successfully</string>
+    <string name="msg_invalid_number_format">Invalid number format, please check your input</string>
+    <string name="msg_config_save_failed">Failed to save configuration: %1$s</string>
+
+    <!-- DeveloperActivity -->
+    <string name="dev_title">Developer Mode</string>
+    <string name="btn_print_db">Print DB Info</string>
+    <string name="btn_reset_db">RESET DB</string>
+    <string name="btn_encryption_on">Encryption: ON</string>
+    <string name="btn_encryption_off">Encryption: OFF</string>
+    <string name="btn_decrypt_latest">Decrypt Latest</string>
+    <string name="warn_stop_before_toggle">Please stop XcLogger first before toggling encryption</string>
+    <string name="msg_encryption_enabled">Encryption enabled</string>
+    <string name="msg_encryption_disabled">Encryption disabled</string>
+    <string name="warn_stop_before_decrypt">Please stop XcLogger first before decrypting file</string>
+    <string name="warn_encryption_not_enabled">Encryption is not enabled, cannot decrypt</string>
+    <string name="msg_decrypt_success">File decrypted successfully: %1$s</string>
+    <string name="msg_decrypt_failed">Failed to decrypt latest log file</string>
+    <string name="msg_db_reset_success">Database reset to default configuration successfully. Please refresh other activities.</string>
+    <string name="dev_footer_hint">Check logcat for database information</string>
+
+    <!-- LogCaptureService -->
+    <string name="notif_title">XCLogger</string>
+    <string name="notif_content">XCLogger is running</string>
 </resources>

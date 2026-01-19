@@ -170,7 +170,7 @@ public class MainActivity extends AppCompatActivity {
             if (checkPermissions()) {
                 refreshStateFromDatabase();
             } else {
-                Toast.makeText(this, "Permission denied. App will exit.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.permission_denied, Toast.LENGTH_LONG).show();
                 finish();
             }
         }
@@ -187,7 +187,8 @@ public class MainActivity extends AppCompatActivity {
             }
             refreshStateFromDatabase();
         } catch (Exception e) {
-            Toast.makeText(this, "Failed to toggle logging state: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            String errorMsg = getString(R.string.err_toggle_state_failed, e.getMessage());
+            Toast.makeText(this, errorMsg, Toast.LENGTH_LONG).show();
             processController.recordOperationHistory("Error: Failed to toggle state - " + e.getMessage());
         }
     }
@@ -195,16 +196,16 @@ public class MainActivity extends AppCompatActivity {
     private void updateStateUi() {
         if (running) {
             imgState.setImageResource(R.drawable.ic_start);
-            txtState.setText("XcLogger is Running");
+            txtState.setText(R.string.state_running);
         } else {
             imgState.setImageResource(R.drawable.ic_stop);
-            txtState.setText("XcLogger has stopped");
+            txtState.setText(R.string.state_stopped);
         }
     }
 
     private void editPath() {
         if (running) {
-            Toast.makeText(this, "Log is running, please stop log first before modifying file path", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.warn_stop_log_first, Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -212,9 +213,9 @@ public class MainActivity extends AppCompatActivity {
         input.setText(config.getLogDir());
 
         new AlertDialog.Builder(this)
-                .setTitle("Edit log path")
+                .setTitle(R.string.dialog_edit_path_title)
                 .setView(input)
-                .setPositiveButton("Save", (d, w) -> {
+                .setPositiveButton(R.string.save, (d, w) -> {
                     String oldPath = config.getLogDir();
                     String newPath = input.getText().toString();
 
@@ -224,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
                     txtPath.setText(config.getLogDir());
                     processController.recordOperationHistory("User modified log directory from " + oldPath + " to " + newPath);
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -256,16 +257,16 @@ public class MainActivity extends AppCompatActivity {
         input.setInputType(InputType.TYPE_CLASS_NUMBER);
 
         developerDialog = new AlertDialog.Builder(this)
-                .setTitle("Enter Code")
+                .setTitle(R.string.dialog_enter_code)
                 .setView(input)
-                .setPositiveButton("OK", (d, w) -> {
+                .setPositiveButton(R.string.ok, (d, w) -> {
                     if ("0000".equals(input.getText().toString())) {
                         processController.recordOperationHistory("User accessed developer mode");
                         startActivity(new Intent(this, DeveloperActivity.class));
                     }
                     releaseDeveloperDialog();
                 })
-                .setNegativeButton("Cancel", (d, w) -> releaseDeveloperDialog())
+                .setNegativeButton(R.string.cancel, (d, w) -> releaseDeveloperDialog())
                 .setOnDismissListener(dialog -> releaseDeveloperDialog())
                 .create();
     }

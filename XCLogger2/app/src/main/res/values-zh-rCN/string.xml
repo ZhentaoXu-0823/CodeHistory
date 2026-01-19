@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App General -->
+    <string name="app_name">XCLogger</string>
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+
+    <!-- MainActivity -->
+    <string name="main_title">XcLogger</string>
+    <string name="btn_detail">详情</string>
+    <string name="state_running">XcLogger 正在运行</string>
+    <string name="state_stopped">XcLogger 已停止</string>
+    <string name="permission_denied">权限被拒绝。应用将退出。</string>
+    <string name="dialog_edit_path_title">编辑日志路径</string>
+    <string name="warn_stop_log_first">日志正在运行，修改路径前请先停止日志</string>
+    <string name="dialog_enter_code">输入代码</string>
+    <string name="err_toggle_state_failed">切换日志状态失败: %1$s</string>
+
+    <!-- XcLoggerConfigActivity -->
+    <string name="config_title">配置</string>
+    <string name="btn_save_config">保存</string>
+    <string name="warn_config_disabled">日志正在运行，已禁用配置修改</string>
+    <string name="hint_total_size">总容量 (GB)</string>
+    <string name="hint_file_size">单文件大小 (MB)</string>
+    <string name="hint_buffer_size">缓冲区大小 (字节)</string>
+    <string name="hint_log_dir">日志存储路径</string>
+    <string name="hint_log_period">日志保存周期 (小时)</string>
+    <string name="hint_filter_tag">过滤标签 (多个值用逗号分隔，例如 tag1,tag2)</string>
+    <string name="hint_filter_level">过滤级别 (单个值: f, e, w, i, d, 或 v)</string>
+    <string name="hint_filter_package">过滤包名 (多个值用逗号分隔，例如 pkg1,pkg2)</string>
+    <string name="err_invalid_filter_level">Filter Level设置失败！\n正确格式：只能设置单个值，可选值：f, e, w, i, d, v\n当前值：%1$s</string>
+    <string name="msg_config_save_success">配置保存成功</string>
+    <string name="msg_invalid_number_format">数字格式无效，请检查输入</string>
+    <string name="msg_config_save_failed">保存配置失败: %1$s</string>
+
+    <!-- DeveloperActivity -->
+    <string name="dev_title">开发者模式</string>
+    <string name="btn_print_db">打印数据库信息</string>
+    <string name="btn_reset_db">重置数据库</string>
+    <string name="btn_encryption_on">加密: 开启</string>
+    <string name="btn_encryption_off">加密: 关闭</string>
+    <string name="btn_decrypt_latest">解密最新文件</string>
+    <string name="warn_stop_before_toggle">切换加密状态前请先停止 XcLogger</string>
+    <string name="msg_encryption_enabled">已开启加密</string>
+    <string name="msg_encryption_disabled">已关闭加密</string>
+    <string name="warn_stop_before_decrypt">解密文件前请先停止 XcLogger</string>
+    <string name="warn_encryption_not_enabled">未开启加密功能，无法解密</string>
+    <string name="msg_decrypt_success">文件解密成功: %1$s</string>
+    <string name="msg_decrypt_failed">解密最新日志文件失败</string>
+    <string name="msg_db_reset_success">数据库已成功重置为默认配置。请刷新其他页面。</string>
+    <string name="dev_footer_hint">查看 Logcat 获取数据库详情信息</string>
+
+    <!-- LogCaptureService -->
+    <string name="notif_title">XCLogger</string>
+    <string name="notif_content">XCLogger 正在后台运行</string>
+</resources>

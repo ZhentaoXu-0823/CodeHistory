@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App General -->
+    <string name="app_name">XCLogger</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Отмена</string>
+    <string name="save">Сохранить</string>
+
+    <!-- MainActivity -->
+    <string name="main_title">XcLogger</string>
+    <string name="btn_detail">ПОДРОБНО</string>
+    <string name="state_running">XcLogger запущен</string>
+    <string name="state_stopped">XcLogger остановлен</string>
+    <string name="permission_denied">В разрешении отказано. Приложение будет закрыто.</string>
+    <string name="dialog_edit_path_title">Изменить путь лога</string>
+    <string name="warn_stop_log_first">Лог запущен, сначала остановите его, чтобы изменить путь</string>
+    <string name="dialog_enter_code">Введите код</string>
+    <string name="err_toggle_state_failed">Не удалось изменить состояние логирования: %1$s</string>
+
+    <!-- XcLoggerConfigActivity -->
+    <string name="config_title">Конфиг</string>
+    <string name="btn_save_config">СОХРАНИТЬ</string>
+    <string name="warn_config_disabled">Лог запущен, изменение конфигурации отключено</string>
+    <string name="hint_total_size">Общий размер в ГБ</string>
+    <string name="hint_file_size">Размер файла в МБ</string>
+    <string name="hint_buffer_size">Размер буфера в байтах</string>
+    <string name="hint_log_dir">Путь к директории логов</string>
+    <string name="hint_log_period">Период хранения логов в часах</string>
+    <string name="hint_filter_tag">Тег фильтра (несколько значений через запятую, напр. tag1,tag2)</string>
+    <string name="hint_filter_level">Уровень фильтра (одно значение: f, e, w, i, d или v)</string>
+    <string name="hint_filter_package">Пакет фильтра (несколько значений через запятую, напр. pkg1,pkg2)</string>
+    <string name="err_invalid_filter_level">Ошибка настройки уровня фильтра!\nВерный формат: одно значение из: f, e, w, i, d, v\nТекущее: %1$s</string>
+    <string name="msg_config_save_success">Конфигурация успешно сохранена</string>
+    <string name="msg_invalid_number_format">Неверный формат числа, проверьте ввод</string>
+    <string name="msg_config_save_failed">Ошибка сохранения конфигурации: %1$s</string>
+
+    <!-- DeveloperActivity -->
+    <string name="dev_title">Режим разработчика</string>
+    <string name="btn_print_db">Инфо базы данных</string>
+    <string name="btn_reset_db">СБРОС БД</string>
+    <string name="btn_encryption_on">Шифрование: ВКЛ</string>
+    <string name="btn_encryption_off">Шифрование: ВЫКЛ</string>
+    <string name="btn_decrypt_latest">Расшифровать последний</string>
+    <string name="warn_stop_before_toggle">Сначала остановите XcLogger, чтобы переключить шифрование</string>
+    <string name="msg_encryption_enabled">Шифрование включено</string>
+    <string name="msg_encryption_disabled">Шифрование выключено</string>
+    <string name="warn_stop_before_decrypt">Сначала остановите XcLogger, чтобы расшифровать файл</string>
+    <string name="warn_encryption_not_enabled">Шифрование не включено, расшифровка невозможна</string>
+    <string name="msg_decrypt_success">Файл успешно расшифрован: %1$s</string>
+    <string name="msg_decrypt_failed">Не удалось расшифровать последний файл лога</string>
+    <string name="msg_db_reset_success">База данных успешно сброшена. Пожалуйста, обновите другие разделы.</string>
+    <string name="dev_footer_hint">Проверьте logcat для получения информации о базе данных</string>
+
+    <!-- LogCaptureService -->
+    <string name="notif_title">XCLogger</string>
+    <string name="notif_content">XcLogger запущен</string>
+</resources>
