@@ -8,6 +8,7 @@ import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.service.LogCaptureService;
+import com.xcheng.xclogger.service.RemoteBindService;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 /**
@@ -58,6 +59,11 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         }
     }
 
+    private void startRemoteBindService(Context context) {
+        Intent intent = new Intent(context, RemoteBindService.class);
+        context.startService(intent);
+    }
+
     private void handleBootCompleted(Context context) {
         try {
             XcLoggerDatabase database = new XcLoggerDatabase(context);
@@ -68,6 +74,8 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error handling boot completed", e);
+        } finally {
+            startRemoteBindService(context);
         }
     }
 
@@ -88,6 +96,8 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error handling package replaced", e);
+        } finally {
+            startRemoteBindService(context);
         }
     }
 

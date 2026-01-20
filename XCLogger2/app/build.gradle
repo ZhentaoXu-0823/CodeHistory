@@ -49,6 +49,9 @@ android {
             output.outputFileName = apkName
         }
     }
+    buildFeatures {
+        aidl true
+    }
 }
 
 dependencies {

@@ -19,6 +19,7 @@ import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.DeveloperActivity;
 import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
+import com.xcheng.xclogger.service.RemoteBindService;
 import com.xcheng.xclogger.ui.XcLoggerConfigActivity;
 import com.xcheng.xclogger.util.DatabaseMigration;
 import com.xcheng.xclogger.util.XcLoggerConfig;
@@ -32,7 +33,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.POST_NOTIFICATIONS
     };
 
     // UI组件
@@ -71,9 +73,10 @@ public class MainActivity extends AppCompatActivity {
         DatabaseMigration.migrateIfNeeded(this);
         ConfigLoader.getInstance().load(this);
 
+        startService(new Intent(this, RemoteBindService.class));
+
         initViews();
         initData();
-
         requestPermissions();
     }
 

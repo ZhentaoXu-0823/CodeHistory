@@ -206,4 +206,12 @@ public class ProcessController {
     public FileManager getFileManager() {
         return fileManager;
     }
+
+    /**
+     * 获取当前物理运行状态
+     * @return true 表示采集器正在工作中
+     */
+    public boolean isRunning() {
+        return logCatcher != null && logCatcher.isRunning();
+    }
 }
