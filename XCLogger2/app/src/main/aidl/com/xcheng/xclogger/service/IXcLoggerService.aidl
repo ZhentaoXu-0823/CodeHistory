@@ -13,8 +13,8 @@ interface IXcLoggerService {
     XcLoggerConfig getConfiguration();
     void updateConfiguration(in XcLoggerConfig config);
 
-    // 压缩任务
-    void triggerCompression(String targetPackage);
+    // 触发按天压缩并导出到 /data/xclogger/mobilelog (结果通过 IXcLoggerListener 返回)
+    void triggerCompression();
 
     // 监听器注册
     void registerListener(IXcLoggerListener listener);

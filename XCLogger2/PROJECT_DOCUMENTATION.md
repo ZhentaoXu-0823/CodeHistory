@@ -1,28 +1,34 @@
-﻿# XcLogger 项目文档
+# XcLogger 项目文档
 
 ## 项目概述
 
-XcLogger 是一个Android日志记录应用，用于捕获系统日志并提供配置管理功能。项目采用模块化架构，实现了日志捕获、文件管理、流程控制和用户界面等核心功能。
+XcLogger 是一个 Android 日志记录应用，用于捕获系统日志并提供配置管理、服务控制与归档导出能力。项目采用模块化与服务化架构：由前台服务承载持续采集流程，结合广播恢复、AIDL 远程控制与文件压缩服务，实现日志工具在系统场景下的稳定运行。
+
+相较于传统“界面直接拉起采集”的方式，当前实现将核心采集逻辑下沉到 Service 与控制层，具备更强的生命周期韧性与自动恢复能力。
 
 ## 功能需求
 
 ### 核心功能
 - **日志记录系统**：捕获系统日志并存储到文件
-- **配置管理**：从XML加载默认配置，支持数据库持久化
-- **文件管理**：日志文件创建、轮转、历史记录
-- **流程控制**：监控所有操作并记录到历史文件
+- **配置管理**：从 XML 加载默认配置，支持数据库持久化
+- **服务化流程控制**：前台服务启动/停止日志采集，支持重启恢复
+- **广播控制能力**：支持开机恢复、应用升级恢复、ADB 广播命令控制
+- **远程接口能力**：通过 AIDL 提供跨进程控制与状态回调
+- **文件管理**：日志文件创建、轮转、历史记录、压缩归档
+- **可选加密写入**：支持基于配置开关的 XOR 写入
 - **用户界面**：简洁扁平化的配置和状态显示
 - **开发者工具**：隐藏的调试功能
 
 ### 技术规格
-- **日志存储路径**：`/storage/emulated/0/sdcard/XcLogger`
-- **文件命名规则**：`main_log_yyyyMMdd_HHmmss.txt`
+- **日志存储路径（默认）**：`/storage/emulated/0/XcLogger`（可配置）
+- **文件命名规则（当前）**：`mainlog_<6位索引>_yyyyMMdd_HHmmss_*.txt`
 - **单文件大小限制**：4MB（可配置）
-- **缓冲区大小**：4096字节（可配置）
-- **历史记录文件**：`XcLoggerOperateHistory.txt`
+- **缓冲区大小**：XML 默认 4096 字节；数据库兜底默认值 1024 字节
+- **历史记录文件**：`A_OperationHistory.txt`
+- **压缩输出目录**：`/data/xclogger/mobilelog`
 - **配置存储**：SharedPreferences
-- **最低Android版本**：API 29 (Android 10)
-- **目标Android版本**：API 33 (Android 13)
+- **最低 Android 版本**：API 29 (Android 10)
+- **目标 Android 版本**：API 33 (Android 13)
 
 ## 项目结构
 
@@ -30,512 +36,400 @@ XcLogger 是一个Android日志记录应用，用于捕获系统日志并提供�
 XcLogger/
  app/
     src/main/
+       aidl/com/xcheng/xclogger/
+          service/
+             IXcLoggerListener.aidl          # AIDL监听回调接口
+             IXcLoggerService.aidl           # AIDL远程控制接口
+          util/
+             XcLoggerConfig.aidl             # 配置对象AIDL定义
        java/com/xcheng/xclogger/
-          MainActivity.java                    # 主界面控制器
+          MainActivity.java                  # 主界面控制器
           filemanager/
              FileManager.java                # 文件管理模块
+             FileCompressService.java        # 文件压缩服务
+             XcXorEncryption.java            # XOR加密工具
           processctr/
              ConfigLoader.java               # 配置加载器
              DeveloperActivity.java          # 开发者调试页面
+             LogServiceController.java       # 服务控制器
              ProcessController.java          # 流程控制器
+          receiver/
+             XcLoggerBroadcastReceiver.java  # 广播接收器
           recorder/
              LogBuffer.java                  # 日志缓冲区
              SystemLogCatcher.java           # 系统日志捕获器
+          service/
+             LogCaptureService.java          # 前台日志采集服务
+             RemoteBindService.java          # AIDL绑定服务
           ui/
              XcLoggerConfigActivity.java     # 配置界面
           util/
-              XcLoggerConfig.java             # 配置数据模型
-              XcLoggerDatabase.java           # 数据库工具类
+             DatabaseMigration.java          # 数据迁移工具
+             XcLoggerConfig.java             # 配置数据模型
+             XcLoggerDatabase.java           # 数据库存储工具类
        res/
-          drawable/                           # 图标资源
-             bg_rounded_gray.xml            # 圆角背景
-             ic_start.xml                   # 开始图标
-             ic_stop.xml                    # 停止图标
-          layout/                             # 布局文件
-             activity_main.xml              # 主界面布局
-          values/                             # 字符串资源
-             strings.xml                    # 字符串定义
-             colors.xml                     # 颜色定义
-             themes.xml                     # 主题定义
+          drawable/                          # 图标资源
+          layout/                            # 布局文件
+          values/                            # 字符串/主题资源
           xml/
-              default_config.xml              # 默认配置文件
-       AndroidManifest.xml                     # 应用清单
-    build.gradle                                # 应用构建配置
- build.gradle                                    # 项目构建配置
- settings.gradle                                 # 项目设置
- gradle.properties                               # Gradle属性
+             default_config.xml              # 默认配置文件
+       AndroidManifest.xml                   # 应用清单
+    build.gradle                             # 应用构建配置
+ build.gradle                                # 项目构建配置
+ settings.gradle                             # 项目设置
+ gradle.properties                           # Gradle属性
 ```
 
 ## 类和方法详细说明
 
 ### 1. MainActivity.java
-**包路径**：`com.xcheng.xclogger`
+**包路径**：`com.xcheng.xclogger`  
 **作用**：主界面控制器，提供用户交互入口
 
-**属性**：
-- `txtTitle` (TextView) - 应用标题显示
-- `btnDetail` (TextView) - 详情按钮
-- `txtState` (TextView) - 状态文本显示
-- `txtPath` (TextView) - 路径显示
-- `imgState` (ImageView) - 状态图标
-- `btnStart` (LinearLayout) - 开始/停止按钮容器
-- `running` (boolean) - 运行状态标志
-- `config` (XcLoggerConfig) - 配置对象
-- `database` (XcLoggerDatabase) - 数据库操作对象
-- `titleTapCount` (int) - 标题点击计数
-- `lastTapTs` (long) - 上次点击时间戳
-
-**方法列表**：
-- `onCreate(Bundle savedInstanceState)` - 初始化UI组件和配置
-  - 设置布局文件
-  - 初始化UI组件引用
-  - 加载配置和运行状态
-  - 设置点击监听器
-- `toggleState()` - 切换日志记录状态
-  - 切换running标志
-  - 保存状态到数据库
-  - 更新UI显示
-- `updateStateUi()` - 更新界面显示状态
-  - 根据running状态设置图标和文本
-  - 运行中显示开始图标和"XcLogger is Running"
-  - 停止时显示停止图标和"XcLogger has stopped"
-- `editPath()` - 编辑日志存储路径
-  - 创建输入对话框
-  - 允许用户修改日志存储路径
-  - 保存修改到配置和数据库
-- `handleSecretTap()` - 处理标题点击事件（开发者入口）
-  - 检测连续5次点击（1秒内）
-  - 显示密码输入对话框
-  - 密码"0000"进入开发者模式
+**关键职责**：
+- 初始化配置与数据库迁移
+- 发起权限请求
+- 通过 `LogServiceController` 控制日志服务启停
+- 展示运行状态与当前路径
+- 提供隐藏开发者入口
 
 ### 2. FileManager.java (filemanager包)
-**包路径**：`com.xcheng.xclogger.filemanager`
-**作用**：文件管理模块，负责日志文件的创建、写入和轮转
+**包路径**：`com.xcheng.xclogger.filemanager`  
+**作用**：文件管理模块，负责日志文件创建、写入、轮转、路径更新与历史记录
 
-**属性**：
-- `context` (Context) - Android上下文
-- `baseDir` (File) - 基础目录
-- `currentMainLogFile` (File) - 当前主日志文件
-- `historyFile` (File) - 操作历史文件
-- `config` (XcLoggerConfig) - 配置对象
-
-**方法列表**：
-- `FileManager(Context ctx)` - 构造函数
-  - 初始化上下文和配置
-  - 设置基础目录路径
-  - 创建历史文件引用
-- `ensureBaseDir()` - 确保基础目录存在
-  - 检查目录是否存在
-  - 不存在则创建目录
-  - 返回创建结果
-- `createNewMainLogFile()` - 创建新的主日志文件
-  - 确保基础目录存在
-  - 生成时间戳文件名
-  - 格式：`main_log_yyyyMMdd_HHmmss.txt`
-  - 创建新文件
-- `appendToMainLog(byte[] data, int len)` - 追加数据到主日志文件
-  - 检查文件是否存在
-  - 追加数据到文件末尾
-  - 刷新输出流
-  - 检查是否需要轮转
-- `appendOperateHistory(String operation)` - 追加操作历史记录
-  - 确保基础目录存在
-  - 追加操作记录到历史文件
-  - 使用UTF-8编码
-- `rotateIfNeeded(int additionalBytes)` - 检查并执行文件轮转
-  - 计算当前文件大小
-  - 检查是否超过限制
-  - 超过则创建新文件
-- `getCurrentMainLogFile()` - 获取当前主日志文件
-- `getBaseDir()` - 获取基础目录
+**关键职责**：
+- 维护日志目录和历史目录
+- 创建新日志文件（含全局索引命名）
+- 追加写入并按策略轮转
+- 记录操作历史
+- 支持按开关启用 XOR 加密写入
 
 ### 3. ConfigLoader.java (processctr包)
-**包路径**：`com.xcheng.xclogger.processctr`
-**作用**：配置加载器，从XML和数据库加载配置
+**包路径**：`com.xcheng.xclogger.processctr`  
+**作用**：配置加载器，从 XML 与数据库加载配置，并维护内存中的当前配置
 
-**属性**：
-- `CURRENT` (static volatile XcLoggerConfig) - 当前配置实例
-
-**方法列表**：
-- `load(Context ctx)` - 加载配置（优先数据库，回退XML）
-  - 尝试从数据库加载配置
-  - 数据库为空则解析XML
-  - 解析成功则保存到数据库
-  - 设置全局配置实例
-- `replaceWith(XcLoggerConfig cfg)` - 替换当前配置实例
-  - 静态方法，更新全局配置
-- `current()` - 获取当前配置实例
-  - 静态方法，返回全局配置
-- `parseXml(Context ctx)` - 解析XML配置文件
-  - 解析`res/xml/default_config.xml`
-  - 提取各种配置参数
-  - 解析过滤规则配置
-  - 返回配置对象
-- `parseFilterBlock(XmlResourceParser parser, XcLoggerConfig config)` - 解析过滤规则配置
-  - 解析标签过滤
-  - 解析级别过滤
-  - 解析包名过滤
-  - 设置默认值
+**关键流程**：
+- 优先读取数据库配置
+- 数据库为空时解析 `res/xml/default_config.xml`
+- 初始化后写回数据库
+- 支持 `updateConfig` 热更新
 
 ### 4. DeveloperActivity.java (processctr包)
-**包路径**：`com.xcheng.xclogger.processctr`
-**作用**：开发者调试页面，提供数据库信息查看
+**包路径**：`com.xcheng.xclogger.processctr`  
+**作用**：开发者调试页面，提供数据库信息检查能力
 
-**方法列表**：
-- `onCreate(Bundle savedInstanceState)` - 初始化调试界面
-  - 创建简单的按钮界面
-  - 设置按钮点击监听器
-- `printDb()` - 打印数据库配置信息到日志
-  - 加载数据库配置
-  - 打印配置参数到LogCat
-  - 用于调试和诊断
+### 5. LogServiceController.java (processctr包)
+**包路径**：`com.xcheng.xclogger.processctr`  
+**作用**：日志服务控制器，统一封装前台服务启停/重启入口
 
-### 5. ProcessController.java (processctr包)
-**包路径**：`com.xcheng.xclogger.processctr`
-**作用**：流程控制器，协调各模块工作并记录操作历史
+**关键职责**：
+- 启动日志前台服务
+- 停止日志前台服务
+- 记录服务控制来源（user/boot/broadcast/aidl）
+- 同步保存运行状态
 
-**属性**：
-- `instance` (static ProcessController) - 单例实例
-- `fileManager` (FileManager) - 文件管理器
-- `systemLogCatcher` (SystemLogCatcher) - 日志捕获器
-- `context` (Context) - Android上下文
-- `isRunning` (boolean) - 运行状态
+### 6. ProcessController.java (processctr包)
+**包路径**：`com.xcheng.xclogger.processctr`  
+**作用**：流程控制器，协调日志捕获、缓冲落盘与操作历史记录
 
-**方法列表**：
-- `ProcessController(Context ctx)` - 私有构造函数
-  - 初始化上下文
-  - 创建文件管理器
-  - 创建日志捕获器
-- `getInstance(Context ctx)` - 获取单例实例
-  - 线程安全的单例模式
-  - 懒加载初始化
-- `startLogging()` - 启动日志记录流程
-  - 检查是否已在运行
-  - 验证配置可用性
-  - 确保基础目录存在
-  - 创建新的主日志文件
-  - 设置日志行监听器
-  - 启动系统日志捕获
-  - 记录操作历史
-- `stopLogging()` - 停止日志记录流程
-  - 停止日志捕获器
-  - 更新运行状态
-  - 记录操作历史
-- `appendOperateSafe(String operation)` - 安全地追加操作记录
-  - 添加时间戳
-  - 格式化日志条目
-  - 追加到历史文件
-  - 异常安全处理
-- `getFileManager()` - 获取文件管理器实例
-- `getSystemLogCatcher()` - 获取日志捕获器实例
-- `isRunning()` - 检查是否正在运行
+**关键职责**：
+- 读取并刷新最新配置
+- 创建日志文件
+- 启停 `SystemLogCatcher`
+- 触发 `LogBuffer` 到 `FileManager` 的刷盘流程
+- 记录操作历史
 
-### 6. LogBuffer.java (recorder包)
-**包路径**：`com.xcheng.xclogger.recorder`
-**作用**：日志缓冲区，管理内存中的日志数据
+### 7. LogBuffer.java (recorder包)
+**包路径**：`com.xcheng.xclogger.recorder`  
+**作用**：日志缓冲区，管理内存中的字节数据并触发批量刷盘
 
-**属性**：
-- `buffer` (StringBuilder) - 缓冲区内容
-- `maxSize` (int) - 最大缓冲区大小
-- `flushListener` (OnFlushListener) - 刷新监听器
+### 8. SystemLogCatcher.java (recorder包)
+**包路径**：`com.xcheng.xclogger.recorder`  
+**作用**：系统日志捕获器，执行 logcat 命令并处理输出
 
-**接口**：
-- `OnFlushListener` - 刷新监听器接口
-  - `onFlush(String data)` - 刷新时回调
+**关键能力**：
+- 构建 logcat 命令
+- 支持 tag/level/package 过滤（package 最终映射到 UID）
+- 并发读取标准输出与错误输出
+- 监控子进程状态并记录异常退出
 
-**方法列表**：
-- `LogBuffer()` - 构造函数
-  - 从配置获取缓冲区大小
-  - 默认4096字节
-  - 初始化StringBuilder
-- `addLogLine(String line)` - 添加日志行到缓冲区
-  - 检查行是否为空
-  - 处理超大行（直接刷新）
-  - 检查缓冲区容量
-  - 自动刷新机制
-- `flush()` - 刷新缓冲区数据
-  - 通知监听器
-  - 清空缓冲区
-- `isFull()` - 检查缓冲区是否已满
-- `getUsedLength()` - 获取已使用长度
-- `setOnFlushListener(OnFlushListener listener)` - 设置刷新监听器
-- `getMaxSize()` - 获取缓冲区最大大小
-- `clear()` - 清空缓冲区
+### 9. LogCaptureService.java (service包)
+**包路径**：`com.xcheng.xclogger.service`  
+**作用**：前台日志采集服务，承载长时运行采集
 
-### 7. SystemLogCatcher.java (recorder包)
-**包路径**：`com.xcheng.xclogger.recorder`
-**作用**：系统日志捕获器，执行logcat命令并处理输出
+**关键职责**：
+- `onCreate` 即进入前台，降低启动超时风险
+- `onStartCommand` 调用 `ProcessController.startLogging(...)`
+- `onDestroy` 调用 `ProcessController.stopLogging(...)`
 
-**属性**：
-- `logcatProcess` (Process) - logcat进程
-- `executor` (ExecutorService) - 单线程执行器
-- `running` (AtomicBoolean) - 运行状态（线程安全）
-- `logLineListener` (OnLogLineListener) - 日志行监听器
-- `logBuffer` (LogBuffer) - 日志缓冲区
+### 10. RemoteBindService.java (service包)
+**包路径**：`com.xcheng.xclogger.service`  
+**作用**：AIDL 绑定服务，对外提供远程控制能力
 
-**接口**：
-- `OnLogLineListener` - 日志行监听器接口
-  - `onLogLine(String line)` - 接收日志行
+**对外能力**：
+- 启停日志
+- 查询运行状态
+- 获取/更新配置
+- 触发压缩
+- 监听状态变化和压缩结果
 
-**方法列表**：
-- `SystemLogCatcher()` - 构造函数
-  - 创建日志缓冲区
-  - 创建单线程执行器
-  - 设置缓冲区刷新监听器
-- `start()` - 启动日志捕获
-  - 检查是否已在运行
-  - 构建logcat命令
-  - 启动logcat进程
-  - 在后台线程读取输出
-- `stop()` - 停止日志捕获
-  - 设置停止标志
-  - 销毁logcat进程
-  - 刷新缓冲区
-- `isRunning()` - 检查运行状态
-- `setOnLogLineListener(OnLogLineListener listener)` - 设置日志行监听器
-- `buildLogcatCommand(XcLoggerConfig config)` - 构建logcat命令
-  - 添加标签过滤
-  - 添加级别过滤
-  - 添加包名过滤
-  - 添加时间戳格式
-- `readLogcatOutput()` - 读取logcat输出
-  - 在后台线程中执行
-  - 逐行读取输出
-  - 添加到缓冲区
-  - 异常处理
-- `getLogBuffer()` - 获取缓冲区实例
+### 11. XcLoggerBroadcastReceiver.java (receiver包)
+**包路径**：`com.xcheng.xclogger.receiver`  
+**作用**：统一广播入口，负责系统事件与自定义控制命令分发
 
-### 8. XcLoggerConfigActivity.java (ui包)
-**包路径**：`com.xcheng.xclogger.ui`
-**作用**：配置界面，提供参数编辑功能
+**监听事件**：
+- `BOOT_COMPLETED`
+- `PACKAGE_REPLACED` / `MY_PACKAGE_REPLACED`
+- `com.xcheng.xclogger.ADB_CMD`
+- `com.xcheng.xclogger.FILE_COMPRESS`
 
-**属性**：
-- `etTotal` (EditText) - 总大小输入框
-- `etFile` (EditText) - 文件大小输入框
-- `etBuffer` (EditText) - 缓冲区大小输入框
-- `etDir` (EditText) - 目录路径输入框
-- `etPeriod` (EditText) - 保存周期输入框
-- `etTag` (EditText) - 标签过滤输入框
-- `etLevel` (EditText) - 级别过滤输入框
-- `etPkg` (EditText) - 包名过滤输入框
-- `cfg` (XcLoggerConfig) - 配置对象
+### 12. FileCompressService.java (filemanager包)
+**包路径**：`com.xcheng.xclogger.filemanager`  
+**作用**：日志压缩归档服务
 
-**方法列表**：
-- `onCreate(Bundle savedInstanceState)` - 初始化配置界面
-  - 创建动态布局
-  - 设置顶部固定区域（标题+保存按钮）
-  - 创建滚动详情区域
-  - 添加各种配置输入框
-  - 设置保存按钮监听器
-- `addRow(LinearLayout parent, String label, String value)` - 创建普通标签+输入行
-  - 创建水平布局行
-  - 添加标签和输入框
-  - 设置布局权重
-  - 返回输入框引用
-- `addRowWithUnit(LinearLayout parent, String label, String value, String unit, boolean numeric)` - 创建带单位的标签+输入行
-  - 创建水平布局行
-  - 添加标签、输入框和单位标签
-  - 设置数字输入类型
-  - 设置布局权重
-  - 返回输入框引用
-- `save()` - 保存所有配置到数据库并更新全局缓存
-  - 从输入框获取值
-  - 更新配置对象
-  - 保存到数据库
-  - 更新全局配置
-- `safeInt(String s)` - 安全字符串转整数
-  - 尝试解析整数
-  - 解析失败返回0
-  - 异常安全处理
+**关键职责**：
+- 按日期收集日志并打包 zip
+- 输出到 `/data/xclogger/mobilelog`
+- 拷贝操作历史文件快照
+- 发送成功/失败广播
+- 必要时暂停并恢复日志采集
 
-### 9. XcLoggerConfig.java (util包)
-**包路径**：`com.xcheng.xclogger.util`
-**作用**：配置数据模型，存储所有配置参数
+### 13. XcLoggerConfigActivity.java (ui包)
+**包路径**：`com.xcheng.xclogger.ui`  
+**作用**：配置界面，提供参数编辑与保存
 
-**属性**：
-- `totalSizeGb` (int) - 总大小限制（GB）
-- `fileSizeMb` (int) - 单文件大小限制（MB）
-- `bufferSizeBytes` (int) - 缓冲区大小（字节）
-- `logDir` (String) - 日志存储目录
-- `logPeriodHours` (int) - 日志保存周期（小时）
-- `filterTag` (String) - 过滤标签
-- `filterLevel` (String) - 过滤级别
-- `filterPackage` (String) - 过滤包名
+### 14. XcLoggerConfig.java (util包)
+**包路径**：`com.xcheng.xclogger.util`  
+**作用**：配置数据模型，存储日志容量、缓冲区、目录与过滤规则
 
-**方法列表**：
-- 所有属性都有对应的getter和setter方法
-- 标准的JavaBean模式
-- 支持序列化和反序列化
+### 15. XcLoggerDatabase.java (util包)
+**包路径**：`com.xcheng.xclogger.util`  
+**作用**：数据库工具类，管理 SharedPreferences 持久化
 
-### 10. XcLoggerDatabase.java (util包)
-**包路径**：`com.xcheng.xclogger.util`
-**作用**：数据库工具类，管理SharedPreferences存储
-
-**常量**：
-- `PREF` - SharedPreferences文件名
-- `K_TOTAL` - 总大小键名
-- `K_FILE` - 文件大小键名
-- `K_BUFFER` - 缓冲区大小键名
-- `K_DIR` - 目录路径键名
-- `K_PERIOD` - 保存周期键名
-- `K_TAG` - 标签过滤键名
-- `K_LEVEL` - 级别过滤键名
-- `K_PKG` - 包名过滤键名
-- `K_RUNNING` - 运行状态键名
-
-**属性**：
-- `sp` (SharedPreferences) - SharedPreferences实例
-
-**方法列表**：
-- `XcLoggerDatabase(Context ctx)` - 构造函数
-  - 获取SharedPreferences实例
-- `saveConfig(XcLoggerConfig c)` - 保存配置到数据库
-  - 获取编辑器
-  - 保存所有配置参数
-  - 异步提交
-- `loadConfig()` - 从数据库加载配置
-  - 检查是否有配置数据
-  - 创建配置对象
-  - 加载所有参数
-  - 返回配置对象
-- `saveRunningState(boolean running)` - 保存运行状态
-- `loadRunningState()` - 加载运行状态
+**关键字段（部分）**：
+- 配置项字段（容量、目录、过滤条件）
+- `is_running`（运行状态）
+- `file_index`（日志全局索引）
+- `operation_history_path`（历史路径）
+- `encryption_enabled`（加密开关）
 
 ## 模块职责分工
 
 ### recorder包 - 日志记录模块
-- **LogBuffer**：内存缓冲区管理，优化I/O性能，支持自动刷新
-- **SystemLogCatcher**：系统日志捕获，执行logcat命令，异步处理输出
+- **LogBuffer**：内存缓冲区管理，优化 I/O 性能，支持自动刷新
+- **SystemLogCatcher**：系统日志捕获，执行 logcat，异步读取输出
 
-### filemanager包 - 文件管理模块
-- **FileManager**：文件操作和轮转，管理存储空间，记录操作历史
+### filemanager包 - 文件管理与归档模块
+- **FileManager**：文件创建、写入、轮转、历史记录与路径维护
+- **FileCompressService**：日志压缩、归档输出、结果广播
+- **XcXorEncryption**：可选加密能力
 
-### processctr包 - 流程控制模块
-- **ProcessController**：流程协调，监控操作，单例模式管理
-- **ConfigLoader**：配置管理，加载和缓存，支持热更新
-- **DeveloperActivity**：调试工具，开发支持，数据库信息查看
+### processctr包 - 服务控制与流程编排模块
+- **LogServiceController**：服务启停控制入口
+- **ProcessController**：采集流程编排与组件协调
+- **ConfigLoader**：配置加载、缓存与更新
+- **DeveloperActivity**：调试辅助
+
+### service包 - 系统服务模块
+- **LogCaptureService**：前台采集服务
+- **RemoteBindService**：AIDL 绑定与远程控制服务
+
+### receiver包 - 广播分发模块
+- **XcLoggerBroadcastReceiver**：系统事件与自定义命令处理
 
 ### ui包 - 用户界面模块
-- **XcLoggerConfigActivity**：配置界面，参数编辑，动态布局生成
+- **XcLoggerConfigActivity**：配置编辑与保存
 
 ### util包 - 工具模块
-- **XcLoggerConfig**：数据模型，配置载体，JavaBean模式
-- **XcLoggerDatabase**：持久化存储，数据管理，SharedPreferences封装
+- **XcLoggerConfig**：配置数据模型
+- **XcLoggerDatabase**：持久化存储封装
+- **DatabaseMigration**：数据库迁移支持
 
 ## 数据流图
 
 ```
-用户操作  MainActivity  ProcessController  SystemLogCatcher
-                                    
-                              LogBuffer  FileManager  文件系统
-                                    
-                              操作历史记录
+用户操作 -> MainActivity -> LogServiceController -> LogCaptureService
+                                           |
+                                           v
+                                  ProcessController -> SystemLogCatcher
+                                           |
+                                           v
+                                      LogBuffer -> FileManager -> 文件系统
+                                           |
+                                           v
+                                      操作历史记录
 ```
 
 ## 配置流程
 
 ```
-应用启动  ConfigLoader.load()  XcLoggerDatabase.loadConfig()
-                                    
-                              数据库为空？
-                                     是
-                              parseXml()  保存到数据库
-                                    
-                              返回配置对象
+应用启动 -> ConfigLoader.load() -> XcLoggerDatabase.loadConfig()
+                                  |
+                                  +-- 数据库无配置 -> 解析 default_config.xml -> 保存到数据库
+                                  |
+                                  +-- 返回 currentConfig 缓存
 ```
+
+## 运行与恢复流程
+
+```
+系统开机/应用升级广播 -> XcLoggerBroadcastReceiver
+                     |
+                     +-- 若 is_running=true -> 启动 LogCaptureService
+                     |
+                     +-- 启动 RemoteBindService 提供远程接口
+```
+
+## 远程控制流程（AIDL）
+
+```
+客户端进程 -> RemoteBindService(IXcLoggerService)
+          |
+          +-- start/stop -> LogServiceController
+          +-- get/update config -> ConfigLoader/XcLoggerDatabase
+          +-- triggerCompression -> FileCompressService
+          +-- status/compress callback -> IXcLoggerListener
+```
+
+## 动态控制扩展硬约束
+
+为保证广播与 AIDL 扩展的一致性、稳定性与可审计性，新增以下硬约束：
+
+1. **全链路操作必须写入 History 文件**
+   - 任一控制请求（Broadcast/AIDL）都必须记录到操作历史。
+   - 至少包含：请求接收、来源反解析结果、白名单校验结果、执行开始、执行结束、执行后运行状态。
+   - 禁止在多入口分散拼接记录；应通过统一控制层集中记录，避免遗漏。
+
+2. **运行中修改日志配置必须先停止再开启**
+   - 当日志采集处于运行状态时，`update_config` 不允许仅写数据库。
+   - 必须执行 stop -> update -> start，保证新配置对运行态生效。
+   - 若重启链路任一步失败，必须写入 History 并返回失败信息。
+
+3. **来源（source）必须内部反解析，禁止外部传入**
+   - 所有请求来源由框架内部从调用上下文反解析。
+   - 禁止信任请求参数中的 source 文本，防止伪装。
+   - 仅允许白名单来源发起控制请求：`adb`、`com.xcheng.xcloggertestdemo`。
+
+4. **串行执行控制请求**
+   - 日志工具内部对请求统一排队串行执行。
+   - 一个命令完整结束后才可执行下一个命令。
+   - 执行结果仍按原通道返回：广播请求走广播回执，AIDL 请求走 AIDL 回执。
+
+5. **UI 一致性与体验约束**
+   - 配置与状态更新不得主动拉起后台 Activity。
+   - 仅更新数据源并由前台界面在生命周期回调时被动刷新。
+   - 禁止为“强制刷新 UI”引入异常跳转行为。
 
 ## 开发规范
 
 ### 注释规范
-- 类顶部：包含类的作用描述和所有方法简介
+- 类顶部：包含类的作用描述和关键方法简介
 - 方法顶部：包含参数说明和返回值说明
-- 使用多行注释格式：`/* ... */`
+- 注释应聚焦设计意图和关键约束，避免重复代码字面含义
 
 ### 编码规范
 - 包名：`com.xcheng.xclogger`
-- 类名：使用PascalCase
-- 方法名：使用camelCase
-- 常量：使用UPPER_SNAKE_CASE
-- 属性：使用camelCase
+- 类名：PascalCase
+- 方法名：camelCase
+- 常量：UPPER_SNAKE_CASE
+- 属性：camelCase
 
 ### 异常处理
-- 所有文件操作使用try-catch包装
-- 提供安全的默认值
-- 记录错误日志
-- 静默处理非关键异常
+- 文件操作、进程操作使用 try-catch 包装
+- 提供安全默认值
+- 记录错误日志与关键操作历史
 
 ### 线程安全
-- 使用AtomicBoolean保证状态一致性
-- 单例模式使用synchronized
-- 后台任务使用ExecutorService
+- 使用 AtomicBoolean 保证状态一致性
+- 单例获取使用 synchronized
+- 后台任务使用 ExecutorService/工作线程
 
 ## 测试建议
 
 ### 功能测试
-- 日志记录功能测试
-- 配置保存和加载测试
-- 文件轮转测试
-- UI交互测试
-- 开发者模式测试
+- 日志记录启停流程
+- 前台服务存活与恢复
+- 配置保存/加载/热更新
+- 文件轮转与清理策略
+- 广播命令控制（ADB_CMD、FILE_COMPRESS）
+- AIDL 调用与回调流程
 
 ### 性能测试
-- 内存使用情况
-- 文件I/O性能
-- 缓冲区效率
-- 长时间运行稳定性
+- 内存使用与缓冲区效率
+- 文件 I/O 与刷盘吞吐
+- 长时运行稳定性
+- 压缩耗时与恢复行为
 
 ### 兼容性测试
-- 不同Android版本（API 29-33）
-- 不同设备存储
-- 权限处理
-- 不同屏幕尺寸
+- Android API 29-33
+- 不同设备存储环境
+- 前台服务与通知行为
+- 权限授予/拒绝场景
 
 ## 部署说明
 
 ### 权限要求
 - `READ_EXTERNAL_STORAGE` - 读取外部存储
 - `WRITE_EXTERNAL_STORAGE` - 写入外部存储
+- `RECEIVE_BOOT_COMPLETED` - 接收开机广播
+- `FOREGROUND_SERVICE` - 运行前台服务
+- `WAKE_LOCK` - 保持关键任务执行
+- `POST_NOTIFICATIONS` - Android 13+ 通知权限
+
+### 组件说明
+- 前台服务：`LogCaptureService`
+- 绑定服务：`RemoteBindService`
+- 广播接收器：`XcLoggerBroadcastReceiver`
+- 压缩服务：`FileCompressService`
+
+### 系统部署前提
+- `AndroidManifest.xml` 中使用 `android:sharedUserId="android.uid.system"`
+- 该配置通常要求系统签名或系统镜像部署环境支持
 
 ### 最低要求
 - Android API 29+ (Android 10)
-- 外部存储访问权限
-- 日志读取权限
+- 存储访问权限
+- 前台服务通知能力
 
 ### 构建配置
-- 编译SDK：33
-- 目标SDK：33
-- 最低SDK：29
-- Java版本：1.8
+- 编译 SDK：33
+- 目标 SDK：33
+- 最低 SDK：29
+- Java 版本：1.8
+
+## 与参考工程关系
+
+- **mobile_log_d**：底层日志 daemon 参考工程，偏平台侧 C 实现，通常由上层应用控制。
+- **MTKLogger**：传统日志工具 UI/控制参考工程。
+- **XcLogger(app)**：当前自定义实现，采用 Android 应用层服务化方案，重点在稳定采集、远程控制与归档能力。
 
 ## 维护指南
 
 ### 日志文件管理
-- 定期清理过期日志
-- 监控存储空间使用
-- 检查文件权限
-- 验证文件完整性
+- 监控日志目录空间占用
+- 定期验证轮转与清理策略
+- 检查压缩输出目录权限
+- 验证历史文件完整性
 
 ### 配置管理
-- 备份重要配置
-- 版本升级兼容性
-- 默认值更新
-- 配置验证
+- 备份关键配置
+- 升级时检查默认值与数据库兜底值差异
+- 关注 `file_index`、`is_running`、`operation_history_path` 等关键字段
 
 ### 性能优化
-- 缓冲区大小调优
-- 文件轮转策略
-- 内存使用监控
-- 线程池管理
+- 按设备能力调整缓冲区大小
+- 评估轮转阈值与压缩时机
+- 监控 logcat 子进程稳定性
 
 ### 故障排除
-- 检查权限设置
-- 验证存储空间
-- 查看操作历史
-- 使用开发者模式诊断
+- 检查权限与通知设置
+- 验证服务是否成功进入前台
+- 查看操作历史与系统日志
+- 使用开发者入口进行诊断
 
 ## 版本信息
 
-- **当前版本**：1.0
+- **文档版本**：2.0
 - **版本代码**：1
 - **构建工具**：Gradle 8.1.3
 - **Android Gradle Plugin**：8.1.3
