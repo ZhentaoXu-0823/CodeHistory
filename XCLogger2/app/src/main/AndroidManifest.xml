@@ -77,6 +77,9 @@
             <intent-filter>
                 <action android:name="com.xcheng.xclogger.FILE_COMPRESS" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="com.xcheng.xclogger.CTRL_REQUEST" />
+            </intent-filter>
         </receiver>
     </application>
 </manifest>

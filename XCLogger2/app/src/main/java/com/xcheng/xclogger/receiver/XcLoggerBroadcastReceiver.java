@@ -4,11 +4,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
+import com.xcheng.xclogger.control.CommandSerialExecutor;
+import com.xcheng.xclogger.control.ControlRequest;
+import com.xcheng.xclogger.control.ControlResult;
+import com.xcheng.xclogger.control.SourceResolver;
 import com.xcheng.xclogger.filemanager.FileCompressService;
-import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
-import com.xcheng.xclogger.service.LogCaptureService;
 import com.xcheng.xclogger.service.RemoteBindService;
+import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 /**
@@ -17,15 +20,17 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
 public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     private static final String TAG = "XcLoggerBroadcastReceiver";
 
-    // ADB 命令广播
     private static final String ACTION_ADB_CMD = "com.xcheng.xclogger.ADB_CMD";
+    private static final String ACTION_FILE_COMPRESS = "com.xcheng.xclogger.FILE_COMPRESS";
+    private static final String ACTION_CTRL_REQUEST = "com.xcheng.xclogger.CTRL_REQUEST";
+    private static final String ACTION_CTRL_RESULT = "com.xcheng.xclogger.CTRL_RESULT";
+
     private static final String EXTRA_CMD_NAME = "cmd_name";
     private static final String CMD_START = "start_xc_log";
     private static final String CMD_STOP = "stop_xc_log";
     private static final String CMD_FILE_COMPRESS = "file_compress";
 
-    // 文件压缩广播（大写）
-    private static final String ACTION_FILE_COMPRESS = "com.xcheng.xclogger.FILE_COMPRESS";
+    private static final String EXTRA_OP_TYPE = "op_type";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -40,23 +45,30 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
             case Intent.ACTION_BOOT_COMPLETED:
                 handleBootCompleted(context);
                 break;
-
             case Intent.ACTION_PACKAGE_REPLACED:
                 handleAppUpdated(context, intent);
                 break;
-
             case Intent.ACTION_MY_PACKAGE_REPLACED:
                 handleMyPackageReplaced(context);
                 break;
-
             case ACTION_ADB_CMD:
                 handleAdbCmd(context, intent);
                 break;
-
             case ACTION_FILE_COMPRESS:
-                startFileCompressService(context, intent);
+                handleControlRequest(context, buildSimpleIntent("trigger_compress", intent));
+                break;
+            case ACTION_CTRL_REQUEST:
+                handleControlRequest(context, intent);
+                break;
+            default:
                 break;
         }
+    }
+
+    private Intent buildSimpleIntent(String opType, Intent src) {
+        Intent i = new Intent(src);
+        i.putExtra(EXTRA_OP_TYPE, opType);
+        return i;
     }
 
     private void startRemoteBindService(Context context) {
@@ -69,7 +81,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
             XcLoggerDatabase database = new XcLoggerDatabase(context);
             boolean shouldRun = database.loadRunningState();
             if (shouldRun) {
-                startLogService(context);
+                handleControlRequest(context, buildControlIntent("start"));
                 recordOperationHistory(context, "Service auto-started after boot");
             }
         } catch (Exception e) {
@@ -91,7 +103,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
             XcLoggerDatabase database = new XcLoggerDatabase(context);
             boolean shouldRun = database.loadRunningState();
             if (shouldRun) {
-                startLogService(context);
+                handleControlRequest(context, buildControlIntent("start"));
                 recordOperationHistory(context, "Service restarted after app update");
             }
         } catch (Exception e) {
@@ -99,6 +111,12 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         } finally {
             startRemoteBindService(context);
         }
+    }
+
+    private Intent buildControlIntent(String opType) {
+        Intent i = new Intent(ACTION_CTRL_REQUEST);
+        i.putExtra(EXTRA_OP_TYPE, opType);
+        return i;
     }
 
     private void handleAdbCmd(Context context, Intent intent) {
@@ -112,15 +130,13 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
         switch (cmd) {
             case CMD_START:
-                LogServiceController.startLogService(context, "broadcast:adb_cmd");
-                recordOperationHistory(context, "ADB_CMD start_xc_log received, service start requested (source:adb_cmd)");
+                handleControlRequest(context, buildControlIntent("start"));
                 break;
             case CMD_STOP:
-                LogServiceController.stopLogService(context, "broadcast:adb_cmd");
-                recordOperationHistory(context, "ADB_CMD stop_xc_log received, service stop requested (source:adb_cmd)");
+                handleControlRequest(context, buildControlIntent("stop"));
                 break;
             case CMD_FILE_COMPRESS:
-                startFileCompressService(context, intent);
+                handleControlRequest(context, buildControlIntent("trigger_compress"));
                 break;
             default:
                 recordOperationHistory(context, "ADB_CMD unknown cmd_name: " + cmd);
@@ -128,29 +144,42 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         }
     }
 
-    private void startFileCompressService(Context context, Intent srcIntent) {
-        try {
-            Intent serviceIntent = new Intent(context, FileCompressService.class);
-            // 保留请求方包名，用于定向回发
-            if (srcIntent.getPackage() != null) {
-                serviceIntent.setPackage(srcIntent.getPackage());
-            }
-            context.startService(serviceIntent);
-            recordOperationHistory(context, "File compress service requested");
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start FileCompressService", e);
-            recordOperationHistory(context, "Error: Failed to start FileCompressService - " + e.getMessage());
+    private void handleControlRequest(Context context, Intent intent) {
+        String opType = intent.getStringExtra(EXTRA_OP_TYPE);
+        if (opType == null || opType.trim().isEmpty()) {
+            opType = "query_status";
         }
+
+        SourceResolver resolver = new SourceResolver();
+        String resolvedSource = resolver.resolveFromBroadcast(context, intent);
+        XcLoggerConfig patch = buildConfigPatch(intent);
+        ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch);
+
+        CommandSerialExecutor.getInstance().submit(context, request, result -> sendControlResult(context, result));
     }
 
-    private void startLogService(Context context) {
-        try {
-            Intent serviceIntent = new Intent(context, LogCaptureService.class);
-            context.startForegroundService(serviceIntent);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start log service", e);
-            recordOperationHistory(context, "Error: Failed to start service - " + e.getMessage());
-        }
+    private XcLoggerConfig buildConfigPatch(Intent intent) {
+        XcLoggerConfig patch = new XcLoggerConfig();
+
+        if (intent.hasExtra("total_size")) patch.setTotalSizeGb(intent.getIntExtra("total_size", 0));
+        if (intent.hasExtra("file_size")) patch.setFileSizeMb(intent.getIntExtra("file_size", 0));
+        if (intent.hasExtra("buffer_size")) patch.setBufferSizeBytes(intent.getIntExtra("buffer_size", 0));
+        if (intent.hasExtra("log_dir")) patch.setLogDir(intent.getStringExtra("log_dir"));
+        if (intent.hasExtra("log_period")) patch.setLogPeriodHours(intent.getIntExtra("log_period", 0));
+        if (intent.hasExtra("filter_tag")) patch.setFilterTag(intent.getStringExtra("filter_tag"));
+        if (intent.hasExtra("filter_level")) patch.setFilterLevel(intent.getStringExtra("filter_level"));
+        if (intent.hasExtra("filter_package")) patch.setFilterPackage(intent.getStringExtra("filter_package"));
+
+        return patch;
+    }
+
+    private void sendControlResult(Context context, ControlResult result) {
+        Intent ret = new Intent(ACTION_CTRL_RESULT);
+        ret.putExtra("success", result.isSuccess());
+        ret.putExtra("message", result.getMessage());
+        ret.putExtra("op_type", result.getOpType());
+        ret.putExtra("running_state", result.isRunningState());
+        context.sendBroadcast(ret);
     }
 
     private void recordOperationHistory(Context context, String operation) {

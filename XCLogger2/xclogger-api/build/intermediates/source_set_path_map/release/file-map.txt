@@ -1,0 +1,7 @@
+com.xcheng.xclogger.api.xclogger-api-pngs-0 D:\GitHubRepositories\XCLogger2\xclogger-api\build\generated\res\pngs\release
+com.xcheng.xclogger.api.xclogger-api-resValues-1 D:\GitHubRepositories\XCLogger2\xclogger-api\build\generated\res\resValues\release
+com.xcheng.xclogger.api.xclogger-api-mergeReleaseResources-2 D:\GitHubRepositories\XCLogger2\xclogger-api\build\intermediates\incremental\release\mergeReleaseResources\merged.dir
+com.xcheng.xclogger.api.xclogger-api-mergeReleaseResources-3 D:\GitHubRepositories\XCLogger2\xclogger-api\build\intermediates\incremental\release\mergeReleaseResources\stripped.dir
+com.xcheng.xclogger.api.xclogger-api-merged_res-4 D:\GitHubRepositories\XCLogger2\xclogger-api\build\intermediates\merged_res\release
+com.xcheng.xclogger.api.xclogger-api-main-5 D:\GitHubRepositories\XCLogger2\xclogger-api\src\main\res
+com.xcheng.xclogger.api.xclogger-api-release-6 D:\GitHubRepositories\XCLogger2\xclogger-api\src\release\res

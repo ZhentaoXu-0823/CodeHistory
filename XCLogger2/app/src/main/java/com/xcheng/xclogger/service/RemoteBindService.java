@@ -10,19 +10,17 @@ import android.os.IBinder;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.util.Log;
+import com.xcheng.xclogger.control.CommandSerialExecutor;
+import com.xcheng.xclogger.control.ControlRequest;
+import com.xcheng.xclogger.control.ControlResult;
+import com.xcheng.xclogger.control.SourceResolver;
 import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.ConfigLoader;
-import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 public class RemoteBindService extends Service {
     private static final String TAG = "RemoteBindService";
-
-    // 定义与 AIDL 契约一致的状态码
-    public static final int COMPRESS_RES_SUCCESS = 0;
-    public static final int COMPRESS_RES_FAILED = 1;
-    public static final int COMPRESS_RES_ERROR = 2;
 
     private final RemoteCallbackList<IXcLoggerListener> mListeners = new RemoteCallbackList<>();
     private SharedPreferences.OnSharedPreferenceChangeListener mPrefsListener;
@@ -49,14 +47,13 @@ public class RemoteBindService extends Service {
 
     private final IXcLoggerService.Stub mBinder = new IXcLoggerService.Stub() {
         @Override
-        public boolean startLogging(String source) throws RemoteException {
-            LogServiceController.startLogService(getApplicationContext(), "aidl:" + source);
-            return true;
+        public boolean startLogging() throws RemoteException {
+            return submitAndWait("start", null).isSuccess();
         }
 
         @Override
-        public void stopLogging() throws RemoteException {
-            LogServiceController.stopLogService(getApplicationContext(), "aidl");
+        public boolean stopLogging() throws RemoteException {
+            return submitAndWait("stop", null).isSuccess();
         }
 
         @Override
@@ -70,14 +67,13 @@ public class RemoteBindService extends Service {
         }
 
         @Override
-        public void updateConfiguration(XcLoggerConfig config) throws RemoteException {
-            ConfigLoader.getInstance().updateConfig(getApplicationContext(), config);
+        public boolean updateConfigurationPartial(XcLoggerConfig config) throws RemoteException {
+            return submitAndWait("update_config", config).isSuccess();
         }
 
         @Override
-        public void triggerCompression() throws RemoteException {
-            Intent intent = new Intent(getApplicationContext(), FileCompressService.class);
-            startService(intent);
+        public boolean triggerCompression() throws RemoteException {
+            return submitAndWait("trigger_compress", null).isSuccess();
         }
 
         @Override
@@ -91,15 +87,60 @@ public class RemoteBindService extends Service {
         }
     };
 
-    /**
-     * 推送压缩结果给所有 AIDL 客户端
-     */
-    private void notifyCompressFinished(int result, String message) {
+    private ControlResult submitAndWait(String opType, XcLoggerConfig configPatch) {
+        final Object lock = new Object();
+        final ControlResult[] holder = new ControlResult[1];
+
+        SourceResolver resolver = new SourceResolver();
+        String source = resolver.resolveFromAidl(getApplicationContext());
+        ControlRequest request = new ControlRequest("aidl", opType, source, configPatch);
+
+        CommandSerialExecutor.getInstance().submit(getApplicationContext(), request, result -> {
+            holder[0] = result;
+            notifyOperationResult(result);
+            synchronized (lock) {
+                lock.notifyAll();
+            }
+        });
+
+        synchronized (lock) {
+            if (holder[0] == null) {
+                try {
+                    lock.wait(5000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        if (holder[0] == null) {
+            return new ControlResult(false, "timeout", opType, new XcLoggerDatabase(this).loadRunningState());
+        }
+        return holder[0];
+    }
+
+    private void notifyOperationResult(ControlResult result) {
         int n = mListeners.beginBroadcast();
         for (int i = 0; i < n; i++) {
             try {
-                // 此处调用的是自动生成的接口，必须确保 AIDL 里的定义是 int
-                mListeners.getBroadcastItem(i).onCompressFinished(result, message);
+                mListeners.getBroadcastItem(i).onOperationResult(
+                        result.getOpType(),
+                        result.isSuccess(),
+                        result.getMessage(),
+                        result.isRunningState()
+                );
+            } catch (RemoteException e) {
+                Log.e(TAG, "Operation callback failed", e);
+            }
+        }
+        mListeners.finishBroadcast();
+    }
+
+    private void notifyCompressFinished(boolean success, String message) {
+        int n = mListeners.beginBroadcast();
+        for (int i = 0; i < n; i++) {
+            try {
+                mListeners.getBroadcastItem(i).onCompressFinished(success, message);
             } catch (RemoteException e) {
                 Log.e(TAG, "Compress callback failed", e);
             }
@@ -112,10 +153,10 @@ public class RemoteBindService extends Service {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (FileCompressService.ACTION_SUCCESS.equals(action)) {
-                notifyCompressFinished(COMPRESS_RES_SUCCESS, "Success");
+                notifyCompressFinished(true, "Success");
             } else if (FileCompressService.ACTION_FAILED.equals(action)) {
                 String error = intent.getStringExtra("error_msg");
-                notifyCompressFinished(COMPRESS_RES_FAILED, error != null ? error : "Failed");
+                notifyCompressFinished(false, error != null ? error : "Failed");
             }
         }
     }
