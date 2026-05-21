@@ -10,7 +10,6 @@ public class XcLoggerDatabase {
     private static final String K_VERSION = "database_version";
     private static final String K_OPERATION_HISTORY_PATH = "operation_history_path";
 
-    // 配置键
     private static final String K_TOTAL_SIZE = "total_size";
     private static final String K_FILE_SIZE = "file_size";
     private static final String K_BUFFER_SIZE = "buffer_size";
@@ -22,8 +21,9 @@ public class XcLoggerDatabase {
 
     public static final String K_IS_RUNNING = "is_running";
     public static final String K_FILE_INDEX = "file_index"; // 全局日志文件序号
+    private static final String K_CONFIG_INITIALIZED = "config_initialized";
+    private static final String K_INITIAL_AUTO_START_ENABLED = "initial_auto_start_enabled";
 
-    // 加密开关键
     private static final String K_ENCRYPTION_ENABLED = "encryption_enabled";
 
     private final SharedPreferences prefs;
@@ -39,18 +39,55 @@ public class XcLoggerDatabase {
     public void saveConfig(XcLoggerConfig config) {
         try {
             SharedPreferences.Editor editor = prefs.edit();
-            editor.putInt(K_TOTAL_SIZE, config.getTotalSizeGb());
-            editor.putInt(K_FILE_SIZE, config.getFileSizeMb());
-            editor.putInt(K_BUFFER_SIZE, config.getBufferSizeBytes());
-            editor.putString(K_LOG_DIR, config.getLogDir());
-            editor.putInt(K_LOG_PERIOD, config.getLogPeriodHours());
-            editor.putString(K_FILTER_TAG, config.getFilterTag());
-            editor.putString(K_FILTER_LEVEL, config.getFilterLevel());
-            editor.putString(K_FILTER_PACKAGE, config.getFilterPackage());
-            editor.apply();
+            putConfig(editor, config);
+            if (!editor.commit()) {
+                Log.w(TAG, "Config commit returned false");
+            }
             Log.i(TAG, "Config saved to database");
         } catch (Exception e) {
             Log.e(TAG, "Failed to save config", e);
+        }
+    }
+
+    public boolean saveInitialConfig(XcLoggerConfig config, boolean initialAutoStartEnabled) {
+        try {
+            SharedPreferences.Editor editor = prefs.edit();
+            putConfig(editor, config);
+            editor.putBoolean(K_INITIAL_AUTO_START_ENABLED, initialAutoStartEnabled);
+            editor.putBoolean(K_CONFIG_INITIALIZED, true);
+            boolean success = editor.commit();
+            Log.i(TAG, "Initial config saved: success=" + success + ", initialAutoStart=" + initialAutoStartEnabled);
+            return success;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save initial config", e);
+            return false;
+        }
+    }
+
+    private void putConfig(SharedPreferences.Editor editor, XcLoggerConfig config) {
+        editor.putInt(K_TOTAL_SIZE, config.getTotalSizeGb());
+        editor.putInt(K_FILE_SIZE, config.getFileSizeMb());
+        editor.putInt(K_BUFFER_SIZE, config.getBufferSizeBytes());
+        editor.putString(K_LOG_DIR, config.getLogDir());
+        editor.putInt(K_LOG_PERIOD, config.getLogPeriodHours());
+        editor.putString(K_FILTER_TAG, config.getFilterTag());
+        editor.putString(K_FILTER_LEVEL, config.getFilterLevel());
+        editor.putString(K_FILTER_PACKAGE, config.getFilterPackage());
+    }
+
+    public boolean hasSavedConfig() {
+        try {
+            return prefs.contains(K_TOTAL_SIZE)
+                    || prefs.contains(K_FILE_SIZE)
+                    || prefs.contains(K_BUFFER_SIZE)
+                    || prefs.contains(K_LOG_DIR)
+                    || prefs.contains(K_LOG_PERIOD)
+                    || prefs.contains(K_FILTER_TAG)
+                    || prefs.contains(K_FILTER_LEVEL)
+                    || prefs.contains(K_FILTER_PACKAGE);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to check saved config", e);
+            return false;
         }
     }
 
@@ -93,9 +130,42 @@ public class XcLoggerDatabase {
         }
     }
 
-    /**
-     * 获取加密开关状态（默认关闭）
-     */
+    public boolean isConfigInitialized() {
+        try {
+            return prefs.getBoolean(K_CONFIG_INITIALIZED, false);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load config initialized state", e);
+            return false;
+        }
+    }
+
+    public void setConfigInitialized(boolean initialized) {
+        try {
+            prefs.edit().putBoolean(K_CONFIG_INITIALIZED, initialized).apply();
+            Log.i(TAG, "Config initialized state saved: " + initialized);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save config initialized state", e);
+        }
+    }
+
+    public boolean loadInitialAutoStartEnabled() {
+        try {
+            return prefs.getBoolean(K_INITIAL_AUTO_START_ENABLED, false);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load initial auto start state", e);
+            return false;
+        }
+    }
+
+    public void saveInitialAutoStartEnabled(boolean enabled) {
+        try {
+            prefs.edit().putBoolean(K_INITIAL_AUTO_START_ENABLED, enabled).apply();
+            Log.i(TAG, "Initial auto start state saved: " + enabled);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save initial auto start state", e);
+        }
+    }
+
     public boolean getEncryptionEnabled() {
         try {
             return prefs.getBoolean(K_ENCRYPTION_ENABLED, false);
@@ -105,9 +175,6 @@ public class XcLoggerDatabase {
         }
     }
 
-    /**
-     * 设置加密开关状态
-     */
     public void setEncryptionEnabled(boolean enabled) {
         try {
             prefs.edit().putBoolean(K_ENCRYPTION_ENABLED, enabled).apply();

@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
 
         DatabaseMigration.migrateIfNeeded(this);
         ConfigLoader.getInstance().load(this);
+        startInitialAutoStartIfNeeded();
 
         startService(new Intent(this, RemoteBindService.class));
 
@@ -97,6 +98,19 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         releaseDeveloperDialog();
         unregisterPrefsListener();
+    }
+
+    private void startInitialAutoStartIfNeeded() {
+        ConfigLoader loader = ConfigLoader.getInstance();
+        if (!loader.wasLastLoadInitializedFromXml() || !loader.getLastInitialAutoStartEnabled()) {
+            return;
+        }
+
+        try {
+            LogServiceController.startLogService(this, "initial_auto_start:first_launch");
+        } catch (Exception e) {
+            Toast.makeText(this, getString(R.string.err_toggle_state_failed, e.getMessage()), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void initViews() {

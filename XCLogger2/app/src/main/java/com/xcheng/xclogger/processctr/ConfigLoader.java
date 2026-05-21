@@ -13,36 +13,18 @@ import java.io.IOException;
 
 /**
  * ConfigLoader - 配置加载器，负责从XML文件和数据库加载配置
- *
- * 功能方法：
- * - getInstance() - 获取单例实例
- * - load(Context) - 加载配置
- * - replaceWith(XcLoggerConfig) - 替换当前配置
- * - getCurrentConfig() - 获取当前配置
- * - current() - 获取当前配置（静态方法）
- * - updateConfig(Context, XcLoggerConfig) - 更新配置并保存到数据库
- * - resetToDefault(Context) - 重置为默认配置
- * - loadFromDatabase(Context) - 从数据库加载配置
- * - loadFromXml(Context) - 从XML文件加载配置
  */
 public class ConfigLoader {
     private static final String TAG = "ConfigLoader";
 
-    // 单例相关
     private static ConfigLoader instance;
     private XcLoggerConfig currentConfig;
+    private boolean lastInitialAutoStartEnabled;
+    private boolean lastLoadInitializedFromXml;
 
-    /**
-     * 私有构造函数，实现单例模式
-     */
     private ConfigLoader() {
-        // 私有构造函数
     }
 
-    /**
-     * 获取单例实例
-     * @return ConfigLoader单例实例
-     */
     public static synchronized ConfigLoader getInstance() {
         if (instance == null) {
             instance = new ConfigLoader();
@@ -50,10 +32,6 @@ public class ConfigLoader {
         return instance;
     }
 
-    /**
-     * 获取当前配置（静态方法）
-     * @return 当前配置对象
-     */
     public static XcLoggerConfig current() {
         if (instance != null) {
             return instance.getCurrentConfig();
@@ -61,37 +39,41 @@ public class ConfigLoader {
         return null;
     }
 
-    /**
-     * 加载配置
-     * @param context Android上下文
-     * @return 配置对象
-     */
     public XcLoggerConfig load(Context context) {
         try {
-            // 首先尝试从数据库加载
-            XcLoggerConfig config = loadFromDatabase(context);
-            if (config != null) {
-                currentConfig = config;
-                Log.i(TAG, "Config loaded from database");
-                return config;
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+            lastLoadInitializedFromXml = false;
+
+            if (db.isConfigInitialized() || db.hasSavedConfig()) {
+                XcLoggerConfig config = loadFromDatabase(context);
+                if (config != null) {
+                    if (!db.isConfigInitialized()) {
+                        db.setConfigInitialized(true);
+                    }
+                    currentConfig = config;
+                    lastInitialAutoStartEnabled = db.loadInitialAutoStartEnabled();
+                    Log.i(TAG, "Config loaded from database");
+                    return config;
+                }
             }
 
-            // 如果数据库中没有配置，从XML文件加载
-            config = loadFromXml(context);
-            if (config != null) {
-                currentConfig = config;
-                // 保存到数据库
-                XcLoggerDatabase db = new XcLoggerDatabase(context);
-                db.saveConfig(config);
+            ConfigXmlResult result = loadFromXml(context);
+            if (result != null && result.config != null) {
+                if (!db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
+                    Log.e(TAG, "Failed to commit initial config");
+                    return null;
+                }
+                currentConfig = result.config;
+                lastInitialAutoStartEnabled = result.initialAutoStartEnabled;
+                lastLoadInitializedFromXml = true;
                 Log.i(TAG, "Config loaded from XML and saved to database");
-                // 记录首次初始化配置到操作历史
                 try {
                     FileManager fm = new FileManager(context);
-                    fm.appendOperationHistory("Config initialized from XML and saved to database (first-time load)");
+                    fm.appendOperationHistory("Config initialized from XML and saved to database (first-time load, initial_auto_start=" + result.initialAutoStartEnabled + ")");
                 } catch (Exception e) {
                     Log.w(TAG, "Failed to record operation history for initial XML load", e);
                 }
-                return config;
+                return result.config;
             }
 
             Log.e(TAG, "Failed to load config from both database and XML");
@@ -102,37 +84,30 @@ public class ConfigLoader {
         }
     }
 
-    /**
-     * 替换当前配置
-     * @param config 新配置
-     */
     public void replaceWith(XcLoggerConfig config) {
         this.currentConfig = config;
         Log.i(TAG, "Config replaced with new configuration");
     }
 
-    /**
-     * 获取当前配置
-     * @return 当前配置对象
-     */
     public XcLoggerConfig getCurrentConfig() {
         return currentConfig;
     }
 
-    /**
-     * 更新配置并保存到数据库
-     * @param context Android上下文
-     * @param config 新配置
-     */
+    public boolean wasLastLoadInitializedFromXml() {
+        return lastLoadInitializedFromXml;
+    }
+
+    public boolean getLastInitialAutoStartEnabled() {
+        return lastInitialAutoStartEnabled;
+    }
+
     public void updateConfig(Context context, XcLoggerConfig config) {
         try {
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             db.saveConfig(config);
-            // 更新当前配置实例
             this.currentConfig = config;
             Log.i(TAG, "Config updated and saved to database");
             Log.i(TAG, "All components should refresh config from ConfigLoader");
-            // 记录操作历史（默认来源：ConfigLoader.updateConfig）
             try {
                 FileManager fm = new FileManager(context);
                 fm.appendOperationHistory("Config updated via ConfigLoader.updateConfig (source:ConfigLoader)");
@@ -144,27 +119,24 @@ public class ConfigLoader {
         }
     }
 
-    /**
-     * 重置为默认配置
-     * @param context Android上下文
-     * @return 默认配置对象
-     */
     public XcLoggerConfig resetToDefault(Context context) {
         try {
-            // 从XML文件加载默认配置
-            XcLoggerConfig defaultConfig = loadFromXml(context);
+            ConfigXmlResult result = loadFromXml(context);
+            XcLoggerConfig defaultConfig = result != null ? result.config : null;
 
             if (defaultConfig != null) {
-                // 保存到数据库
                 XcLoggerDatabase db = new XcLoggerDatabase(context);
-                db.saveConfig(defaultConfig);
+                if (!db.saveInitialConfig(defaultConfig, result.initialAutoStartEnabled)) {
+                    Log.e(TAG, "Failed to commit reset config");
+                    return null;
+                }
 
-                // 更新当前配置实例
                 this.currentConfig = defaultConfig;
+                this.lastInitialAutoStartEnabled = result.initialAutoStartEnabled;
+                this.lastLoadInitializedFromXml = false;
 
                 Log.i(TAG, "Config reset to default and saved to database");
                 Log.i(TAG, "All components should refresh config from ConfigLoader");
-                // 记录操作历史
                 try {
                     FileManager fm = new FileManager(context);
                     fm.appendOperationHistory("Config reset to default (source:ConfigLoader.resetToDefault)");
@@ -182,11 +154,6 @@ public class ConfigLoader {
         }
     }
 
-    /**
-     * 从数据库加载配置
-     * @param context Android上下文
-     * @return 配置对象
-     */
     private XcLoggerConfig loadFromDatabase(Context context) {
         try {
             XcLoggerDatabase db = new XcLoggerDatabase(context);
@@ -197,15 +164,12 @@ public class ConfigLoader {
         }
     }
 
-    /**
-     * 从XML文件加载配置
-     * @param context Android上下文
-     * @return 配置对象
-     */
-    private XcLoggerConfig loadFromXml(Context context) {
+    private ConfigXmlResult loadFromXml(Context context) {
+        XmlResourceParser parser = null;
         try {
-            XmlResourceParser parser = context.getResources().getXml(R.xml.default_config);
+            parser = context.getResources().getXml(R.xml.default_config);
             XcLoggerConfig config = new XcLoggerConfig();
+            boolean initialAutoStartEnabled = false;
             boolean inFilteringRules = false;
 
             int eventType = parser.getEventType();
@@ -215,7 +179,6 @@ public class ConfigLoader {
                     if ("filtering_rules".equals(tagName)) {
                         inFilteringRules = true;
                     } else if (inFilteringRules) {
-                        // 在filtering_rules内部处理过滤规则
                         switch (tagName) {
                             case "tag":
                                 config.setFilterTag(parser.nextText());
@@ -228,7 +191,6 @@ public class ConfigLoader {
                                 break;
                         }
                     } else {
-                        // 处理其他配置项
                         switch (tagName) {
                             case "total_size":
                                 config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
@@ -245,6 +207,9 @@ public class ConfigLoader {
                             case "log_period":
                                 config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
                                 break;
+                            case "auto_start_enabled":
+                                initialAutoStartEnabled = Boolean.parseBoolean(parser.nextText());
+                                break;
                         }
                     }
                 } else if (eventType == XmlPullParser.END_TAG) {
@@ -256,12 +221,25 @@ public class ConfigLoader {
                 eventType = parser.next();
             }
 
-            parser.close();
             Log.i(TAG, "Config loaded from XML file");
-            return config;
+            return new ConfigXmlResult(config, initialAutoStartEnabled);
         } catch (XmlPullParserException | IOException e) {
             Log.e(TAG, "Error parsing XML config file", e);
             return null;
+        } finally {
+            if (parser != null) {
+                parser.close();
+            }
+        }
+    }
+
+    private static class ConfigXmlResult {
+        final XcLoggerConfig config;
+        final boolean initialAutoStartEnabled;
+
+        ConfigXmlResult(XcLoggerConfig config, boolean initialAutoStartEnabled) {
+            this.config = config;
+            this.initialAutoStartEnabled = initialAutoStartEnabled;
         }
     }
 }

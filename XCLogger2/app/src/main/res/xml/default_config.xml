@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <XcLoggerConfig xmlns:android="http://schemas.android.com/apk/res/android">
 
 <!--  Total size （GB）  -->
@@ -15,6 +15,9 @@
 
 <!--  Log coverage period (Hour)  -->
     <log_period>168</log_period>
+
+<!--  Initial auto start after default config is imported for the first time  -->
+    <auto_start_enabled>true</auto_start_enabled>
 
 <!--  Filtering rules  -->
     <filtering_rules>

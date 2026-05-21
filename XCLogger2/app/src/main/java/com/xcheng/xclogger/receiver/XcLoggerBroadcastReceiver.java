@@ -9,6 +9,7 @@ import com.xcheng.xclogger.control.ControlRequest;
 import com.xcheng.xclogger.control.ControlResult;
 import com.xcheng.xclogger.control.SourceResolver;
 import com.xcheng.xclogger.filemanager.FileCompressService;
+import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.service.RemoteBindService;
 import com.xcheng.xclogger.util.XcLoggerConfig;
@@ -78,8 +79,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
     private void handleBootCompleted(Context context) {
         try {
-            XcLoggerDatabase database = new XcLoggerDatabase(context);
-            boolean shouldRun = database.loadRunningState();
+            boolean shouldRun = resolveStartupState(context);
             if (shouldRun) {
                 handleControlRequest(context, buildControlIntent("start"));
                 recordOperationHistory(context, "Service auto-started after boot");
@@ -100,8 +100,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
     private void handleMyPackageReplaced(Context context) {
         try {
-            XcLoggerDatabase database = new XcLoggerDatabase(context);
-            boolean shouldRun = database.loadRunningState();
+            boolean shouldRun = resolveStartupState(context);
             if (shouldRun) {
                 handleControlRequest(context, buildControlIntent("start"));
                 recordOperationHistory(context, "Service restarted after app update");
@@ -111,6 +110,18 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         } finally {
             startRemoteBindService(context);
         }
+    }
+
+    private boolean resolveStartupState(Context context) {
+        ConfigLoader loader = ConfigLoader.getInstance();
+        loader.load(context);
+        if (loader.wasLastLoadInitializedFromXml()) {
+            boolean initialAutoStart = loader.getLastInitialAutoStartEnabled();
+            recordOperationHistory(context, "Initial config imported, initial_auto_start=" + initialAutoStart);
+            return initialAutoStart;
+        }
+        XcLoggerDatabase database = new XcLoggerDatabase(context);
+        return database.loadRunningState();
     }
 
     private Intent buildControlIntent(String opType) {
