@@ -34,6 +34,18 @@ public interface IXcLoggerService extends android.os.IInterface
     {
       return false;
     }
+    @Override public boolean reportUploadResult(boolean success) throws android.os.RemoteException
+    {
+      return false;
+    }
+    @Override public java.lang.String getCompressStatus() throws android.os.RemoteException
+    {
+      return null;
+    }
+    @Override public boolean cancelCompressTask() throws android.os.RemoteException
+    {
+      return false;
+    }
     // 监听器注册
     @Override public void registerListener(com.xcheng.xclogger.service.IXcLoggerListener listener) throws android.os.RemoteException
     {
@@ -129,6 +141,29 @@ public interface IXcLoggerService extends android.os.IInterface
         case TRANSACTION_triggerCompression:
         {
           boolean _result = this.triggerCompression();
+          reply.writeNoException();
+          reply.writeInt(((_result)?(1):(0)));
+          break;
+        }
+        case TRANSACTION_reportUploadResult:
+        {
+          boolean _arg0;
+          _arg0 = (0!=data.readInt());
+          boolean _result = this.reportUploadResult(_arg0);
+          reply.writeNoException();
+          reply.writeInt(((_result)?(1):(0)));
+          break;
+        }
+        case TRANSACTION_getCompressStatus:
+        {
+          java.lang.String _result = this.getCompressStatus();
+          reply.writeNoException();
+          reply.writeString(_result);
+          break;
+        }
+        case TRANSACTION_cancelCompressTask:
+        {
+          boolean _result = this.cancelCompressTask();
           reply.writeNoException();
           reply.writeInt(((_result)?(1):(0)));
           break;
@@ -277,6 +312,58 @@ public interface IXcLoggerService extends android.os.IInterface
         }
         return _result;
       }
+      @Override public boolean reportUploadResult(boolean success) throws android.os.RemoteException
+      {
+        android.os.Parcel _data = android.os.Parcel.obtain();
+        android.os.Parcel _reply = android.os.Parcel.obtain();
+        boolean _result;
+        try {
+          _data.writeInterfaceToken(DESCRIPTOR);
+          _data.writeInt(((success)?(1):(0)));
+          boolean _status = mRemote.transact(Stub.TRANSACTION_reportUploadResult, _data, _reply, 0);
+          _reply.readException();
+          _result = (0!=_reply.readInt());
+        }
+        finally {
+          _reply.recycle();
+          _data.recycle();
+        }
+        return _result;
+      }
+      @Override public java.lang.String getCompressStatus() throws android.os.RemoteException
+      {
+        android.os.Parcel _data = android.os.Parcel.obtain();
+        android.os.Parcel _reply = android.os.Parcel.obtain();
+        java.lang.String _result;
+        try {
+          _data.writeInterfaceToken(DESCRIPTOR);
+          boolean _status = mRemote.transact(Stub.TRANSACTION_getCompressStatus, _data, _reply, 0);
+          _reply.readException();
+          _result = _reply.readString();
+        }
+        finally {
+          _reply.recycle();
+          _data.recycle();
+        }
+        return _result;
+      }
+      @Override public boolean cancelCompressTask() throws android.os.RemoteException
+      {
+        android.os.Parcel _data = android.os.Parcel.obtain();
+        android.os.Parcel _reply = android.os.Parcel.obtain();
+        boolean _result;
+        try {
+          _data.writeInterfaceToken(DESCRIPTOR);
+          boolean _status = mRemote.transact(Stub.TRANSACTION_cancelCompressTask, _data, _reply, 0);
+          _reply.readException();
+          _result = (0!=_reply.readInt());
+        }
+        finally {
+          _reply.recycle();
+          _data.recycle();
+        }
+        return _result;
+      }
       // 监听器注册
       @Override public void registerListener(com.xcheng.xclogger.service.IXcLoggerListener listener) throws android.os.RemoteException
       {
@@ -315,8 +402,11 @@ public interface IXcLoggerService extends android.os.IInterface
     static final int TRANSACTION_getConfiguration = (android.os.IBinder.FIRST_CALL_TRANSACTION + 3);
     static final int TRANSACTION_updateConfigurationPartial = (android.os.IBinder.FIRST_CALL_TRANSACTION + 4);
     static final int TRANSACTION_triggerCompression = (android.os.IBinder.FIRST_CALL_TRANSACTION + 5);
-    static final int TRANSACTION_registerListener = (android.os.IBinder.FIRST_CALL_TRANSACTION + 6);
-    static final int TRANSACTION_unregisterListener = (android.os.IBinder.FIRST_CALL_TRANSACTION + 7);
+    static final int TRANSACTION_reportUploadResult = (android.os.IBinder.FIRST_CALL_TRANSACTION + 6);
+    static final int TRANSACTION_getCompressStatus = (android.os.IBinder.FIRST_CALL_TRANSACTION + 7);
+    static final int TRANSACTION_cancelCompressTask = (android.os.IBinder.FIRST_CALL_TRANSACTION + 8);
+    static final int TRANSACTION_registerListener = (android.os.IBinder.FIRST_CALL_TRANSACTION + 9);
+    static final int TRANSACTION_unregisterListener = (android.os.IBinder.FIRST_CALL_TRANSACTION + 10);
   }
   public static final java.lang.String DESCRIPTOR = "com.xcheng.xclogger.service.IXcLoggerService";
   // 业务控制
@@ -328,6 +418,9 @@ public interface IXcLoggerService extends android.os.IInterface
   public boolean updateConfigurationPartial(com.xcheng.xclogger.util.XcLoggerConfig config) throws android.os.RemoteException;
   // 触发按天压缩并导出到 /data/xclogger/mobilelog
   public boolean triggerCompression() throws android.os.RemoteException;
+  public boolean reportUploadResult(boolean success) throws android.os.RemoteException;
+  public java.lang.String getCompressStatus() throws android.os.RemoteException;
+  public boolean cancelCompressTask() throws android.os.RemoteException;
   // 监听器注册
   public void registerListener(com.xcheng.xclogger.service.IXcLoggerListener listener) throws android.os.RemoteException;
   public void unregisterListener(com.xcheng.xclogger.service.IXcLoggerListener listener) throws android.os.RemoteException;

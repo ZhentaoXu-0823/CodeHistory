@@ -9,4 +9,7 @@ interface IXcLoggerListener {
 
     // 压缩任务完成通知
     void onCompressFinished(boolean success, String message);
+
+    // 压缩包已准备好，等待外部上传
+    void onCompressReady(String zipFiles, int retryCount, int maxRetryCount);
 }

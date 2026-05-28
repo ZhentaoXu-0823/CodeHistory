@@ -552,33 +552,26 @@ public class SystemLogCatcher {
         }
 
         try {
-            // 使用空格分割日志行
             String[] parts = line.split("\\s+");
 
-            // 预期最少字段数：日期(0) 时间(1) UID(2) PID(3) TID(4) LEVEL(5) TAG:(6)
             if (parts.length >= 7) {
-                // UID在索引2（threadtime,uid 格式）
-                try {
-                    info.uid = Integer.parseInt(parts[2]);
-                } catch (NumberFormatException e) {
-                    Log.w(TAG, "Failed to parse UID from log line, part[2]=" + parts[2]);
+                if (filterUidSet != null && !filterUidSet.isEmpty()) {
+                    String uidPart = parts[2];
+                    if (uidPart != null && uidPart.matches("\\d+")) {
+                        info.uid = Integer.parseInt(uidPart);
+                    }
                 }
 
-                // LEVEL在索引5
                 info.level = parts[5];
 
-                // TAG在索引6，去掉末尾冒号
                 String tagPart = parts[6];
                 if (tagPart.endsWith(":")) {
                     tagPart = tagPart.substring(0, tagPart.length() - 1);
                 }
                 info.tag = tagPart;
-            } else {
-                Log.w(TAG, "Log line has insufficient parts (" + parts.length + "), expected at least 7. Line: " +
-                        (line.length() > 100 ? line.substring(0, 100) + "..." : line));
             }
         } catch (Exception e) {
-            Log.w(TAG, "Failed to parse log line: " + (line.length() > 100 ? line.substring(0, 100) + "..." : line), e);
+            Log.d(TAG, "Ignored unparsable log line");
         }
 
         return info;

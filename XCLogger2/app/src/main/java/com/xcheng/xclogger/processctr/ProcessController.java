@@ -214,4 +214,13 @@ public class ProcessController {
     public boolean isRunning() {
         return logCatcher != null && logCatcher.isRunning();
     }
+
+    public File rotateLogFileForCompress() {
+        logBuffer.flush();
+        File sealedFile = fileManager.rotateCurrentLogFileForCompress();
+        if (sealedFile != null) {
+            recordOperationHistory("Compress snapshot boundary sealed: " + sealedFile.getName());
+        }
+        return sealedFile;
+    }
 }

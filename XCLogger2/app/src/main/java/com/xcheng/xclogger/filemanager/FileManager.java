@@ -229,6 +229,23 @@ public class FileManager {
         appendOperationHistory("Current log file state reset (reason: stop logging)");
     }
 
+    public synchronized File rotateCurrentLogFileForCompress() {
+        File sealedFile = currentMainLogFile;
+        if (sealedFile == null || !sealedFile.exists()) {
+            appendOperationHistory("Compress rotation requested but current log file is empty");
+            return null;
+        }
+
+        File newFile = createNewMainLogFile();
+        if (newFile != null) {
+            appendOperationHistory("Compress rotation completed: sealed=" + sealedFile.getName() + ", new=" + newFile.getName());
+            return sealedFile;
+        }
+
+        appendOperationHistory("Compress rotation failed: sealed file remains " + sealedFile.getName());
+        return sealedFile;
+    }
+
     public synchronized void appendToMainLog(byte[] data, int len) {
         try {
             if (data == null || len <= 0) {

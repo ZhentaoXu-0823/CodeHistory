@@ -19,6 +19,10 @@ public interface IXcLoggerListener extends android.os.IInterface
     @Override public void onCompressFinished(boolean success, java.lang.String message) throws android.os.RemoteException
     {
     }
+    // 压缩包已准备好，等待外部上传
+    @Override public void onCompressReady(java.lang.String zipFiles, int retryCount, int maxRetryCount) throws android.os.RemoteException
+    {
+    }
     @Override
     public android.os.IBinder asBinder() {
       return null;
@@ -99,6 +103,18 @@ public interface IXcLoggerListener extends android.os.IInterface
           reply.writeNoException();
           break;
         }
+        case TRANSACTION_onCompressReady:
+        {
+          java.lang.String _arg0;
+          _arg0 = data.readString();
+          int _arg1;
+          _arg1 = data.readInt();
+          int _arg2;
+          _arg2 = data.readInt();
+          this.onCompressReady(_arg0, _arg1, _arg2);
+          reply.writeNoException();
+          break;
+        }
         default:
         {
           return super.onTransact(code, data, reply, flags);
@@ -173,10 +189,29 @@ public interface IXcLoggerListener extends android.os.IInterface
           _data.recycle();
         }
       }
+      // 压缩包已准备好，等待外部上传
+      @Override public void onCompressReady(java.lang.String zipFiles, int retryCount, int maxRetryCount) throws android.os.RemoteException
+      {
+        android.os.Parcel _data = android.os.Parcel.obtain();
+        android.os.Parcel _reply = android.os.Parcel.obtain();
+        try {
+          _data.writeInterfaceToken(DESCRIPTOR);
+          _data.writeString(zipFiles);
+          _data.writeInt(retryCount);
+          _data.writeInt(maxRetryCount);
+          boolean _status = mRemote.transact(Stub.TRANSACTION_onCompressReady, _data, _reply, 0);
+          _reply.readException();
+        }
+        finally {
+          _reply.recycle();
+          _data.recycle();
+        }
+      }
     }
     static final int TRANSACTION_onStatusChanged = (android.os.IBinder.FIRST_CALL_TRANSACTION + 0);
     static final int TRANSACTION_onOperationResult = (android.os.IBinder.FIRST_CALL_TRANSACTION + 1);
     static final int TRANSACTION_onCompressFinished = (android.os.IBinder.FIRST_CALL_TRANSACTION + 2);
+    static final int TRANSACTION_onCompressReady = (android.os.IBinder.FIRST_CALL_TRANSACTION + 3);
   }
   public static final java.lang.String DESCRIPTOR = "com.xcheng.xclogger.service.IXcLoggerListener";
   // 日志状态变化通知 (0: Stopped, 1: Running)
@@ -185,4 +220,6 @@ public interface IXcLoggerListener extends android.os.IInterface
   public void onOperationResult(java.lang.String opType, boolean success, java.lang.String message, boolean runningState) throws android.os.RemoteException;
   // 压缩任务完成通知
   public void onCompressFinished(boolean success, java.lang.String message) throws android.os.RemoteException;
+  // 压缩包已准备好，等待外部上传
+  public void onCompressReady(java.lang.String zipFiles, int retryCount, int maxRetryCount) throws android.os.RemoteException;
 }

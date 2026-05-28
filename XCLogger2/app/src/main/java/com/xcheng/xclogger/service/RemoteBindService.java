@@ -40,8 +40,7 @@ public class RemoteBindService extends Service {
 
         mCompressReceiver = new CompressResultReceiver();
         IntentFilter filter = new IntentFilter();
-        filter.addAction(FileCompressService.ACTION_SUCCESS);
-        filter.addAction(FileCompressService.ACTION_FAILED);
+        filter.addAction(FileCompressService.ACTION_CTRL_RESULT);
         registerReceiver(mCompressReceiver, filter, Context.RECEIVER_EXPORTED);
     }
 
@@ -77,6 +76,26 @@ public class RemoteBindService extends Service {
         }
 
         @Override
+        public boolean reportUploadResult(boolean success) throws RemoteException {
+            FileCompressService.Result result = FileCompressService.upload(getApplicationContext(), success);
+            notifyOperationResult(new ControlResult(result.success, result.message, "upload_result", new XcLoggerDatabase(getApplicationContext()).loadRunningState(), result.state, result.zipFiles, result.retryCount, result.maxRetryCount));
+            return result.success;
+        }
+
+        @Override
+        public String getCompressStatus() throws RemoteException {
+            FileCompressService.Result result = FileCompressService.query(getApplicationContext());
+            return "state=" + result.state + ";zip_files=" + result.zipFiles + ";retry_count=" + result.retryCount + ";max_retry_count=" + result.maxRetryCount;
+        }
+
+        @Override
+        public boolean cancelCompressTask() throws RemoteException {
+            FileCompressService.Result result = FileCompressService.cancel(getApplicationContext());
+            notifyOperationResult(new ControlResult(result.success, result.message, "cancel_compress", new XcLoggerDatabase(getApplicationContext()).loadRunningState(), result.state, result.zipFiles, result.retryCount, result.maxRetryCount));
+            return result.success;
+        }
+
+        @Override
         public void registerListener(IXcLoggerListener listener) throws RemoteException {
             if (listener != null) mListeners.register(listener);
         }
@@ -97,7 +116,9 @@ public class RemoteBindService extends Service {
 
         CommandSerialExecutor.getInstance().submit(getApplicationContext(), request, result -> {
             holder[0] = result;
-            notifyOperationResult(result);
+            if (result != null && !"async_result_pending".equals(result.getMessage())) {
+                notifyOperationResult(result);
+            }
             synchronized (lock) {
                 lock.notifyAll();
             }
@@ -148,16 +169,35 @@ public class RemoteBindService extends Service {
         mListeners.finishBroadcast();
     }
 
+    private void notifyCompressReady(String zipFiles, int retryCount, int maxRetryCount) {
+        int n = mListeners.beginBroadcast();
+        for (int i = 0; i < n; i++) {
+            try {
+                mListeners.getBroadcastItem(i).onCompressReady(zipFiles, retryCount, maxRetryCount);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Compress ready callback failed", e);
+            }
+        }
+        mListeners.finishBroadcast();
+    }
+
     private class CompressResultReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            if (FileCompressService.ACTION_SUCCESS.equals(action)) {
-                notifyCompressFinished(true, "Success");
-            } else if (FileCompressService.ACTION_FAILED.equals(action)) {
-                String error = intent.getStringExtra("error_msg");
-                notifyCompressFinished(false, error != null ? error : "Failed");
+            String opType = intent.getStringExtra("op_type");
+            if (!"trigger_compress".equals(opType)) {
+                return;
             }
+            boolean success = intent.getBooleanExtra("success", false);
+            String message = intent.getStringExtra("message");
+            String state = intent.getStringExtra(FileCompressService.EXTRA_COMPRESS_STATE);
+            String zipFiles = intent.getStringExtra(FileCompressService.EXTRA_ZIP_FILES);
+            int retryCount = intent.getIntExtra(FileCompressService.EXTRA_RETRY_COUNT, 0);
+            int maxRetryCount = intent.getIntExtra(FileCompressService.EXTRA_MAX_RETRY_COUNT, 3);
+            if (success && FileCompressService.STATE_WAIT_UPLOAD_RESULT.equals(state)) {
+                notifyCompressReady(zipFiles != null ? zipFiles : "", retryCount, maxRetryCount);
+            }
+            notifyCompressFinished(success, message != null ? message : (success ? "Success" : "Failed"));
         }
     }
 

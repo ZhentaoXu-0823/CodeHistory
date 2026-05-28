@@ -25,6 +25,11 @@ public class XcLoggerDatabase {
     private static final String K_INITIAL_AUTO_START_ENABLED = "initial_auto_start_enabled";
 
     private static final String K_ENCRYPTION_ENABLED = "encryption_enabled";
+    private static final String K_COMPRESS_STATE = "compress_state";
+    private static final String K_PENDING_ZIP_FILES = "pending_zip_files";
+    private static final String K_UPLOAD_FAIL_COUNT = "upload_fail_count";
+    private static final String K_CANCEL_COMPRESS_REQUESTED = "cancel_compress_requested";
+    private static final String K_RESTART_COMPRESS_REQUESTED = "restart_compress_requested";
 
     private final SharedPreferences prefs;
 
@@ -182,6 +187,62 @@ public class XcLoggerDatabase {
         } catch (Exception e) {
             Log.e(TAG, "Failed to save encryption enabled state", e);
         }
+    }
+
+    public String getCompressState() {
+        return prefs.getString(K_COMPRESS_STATE, "IDLE");
+    }
+
+    public void setCompressState(String state) {
+        prefs.edit().putString(K_COMPRESS_STATE, state).apply();
+        Log.i(TAG, "Compress state saved: " + state);
+    }
+
+    public String getPendingZipFiles() {
+        return prefs.getString(K_PENDING_ZIP_FILES, "");
+    }
+
+    public void setPendingZipFiles(String zipFiles) {
+        prefs.edit().putString(K_PENDING_ZIP_FILES, zipFiles == null ? "" : zipFiles).apply();
+        Log.i(TAG, "Pending zip files saved: " + zipFiles);
+    }
+
+    public int getUploadFailCount() {
+        return prefs.getInt(K_UPLOAD_FAIL_COUNT, 0);
+    }
+
+    public void setUploadFailCount(int count) {
+        prefs.edit().putInt(K_UPLOAD_FAIL_COUNT, count).apply();
+        Log.i(TAG, "Upload fail count saved: " + count);
+    }
+
+    public boolean isCancelCompressRequested() {
+        return prefs.getBoolean(K_CANCEL_COMPRESS_REQUESTED, false);
+    }
+
+    public void setCancelCompressRequested(boolean requested) {
+        prefs.edit().putBoolean(K_CANCEL_COMPRESS_REQUESTED, requested).apply();
+        Log.i(TAG, "Cancel compress requested saved: " + requested);
+    }
+
+    public boolean isRestartCompressRequested() {
+        return prefs.getBoolean(K_RESTART_COMPRESS_REQUESTED, false);
+    }
+
+    public void setRestartCompressRequested(boolean requested) {
+        prefs.edit().putBoolean(K_RESTART_COMPRESS_REQUESTED, requested).apply();
+        Log.i(TAG, "Restart compress requested saved: " + requested);
+    }
+
+    public void clearCompressTaskState() {
+        prefs.edit()
+                .putString(K_COMPRESS_STATE, "IDLE")
+                .putString(K_PENDING_ZIP_FILES, "")
+                .putInt(K_UPLOAD_FAIL_COUNT, 0)
+                .putBoolean(K_CANCEL_COMPRESS_REQUESTED, false)
+                .putBoolean(K_RESTART_COMPRESS_REQUESTED, false)
+                .apply();
+        Log.i(TAG, "Compress task state cleared");
     }
 
     public int getDatabaseVersion() {

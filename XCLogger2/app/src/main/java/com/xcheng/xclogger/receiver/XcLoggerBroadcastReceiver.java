@@ -8,7 +8,6 @@ import com.xcheng.xclogger.control.CommandSerialExecutor;
 import com.xcheng.xclogger.control.ControlRequest;
 import com.xcheng.xclogger.control.ControlResult;
 import com.xcheng.xclogger.control.SourceResolver;
-import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.service.RemoteBindService;
@@ -22,14 +21,12 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     private static final String TAG = "XcLoggerBroadcastReceiver";
 
     private static final String ACTION_ADB_CMD = "com.xcheng.xclogger.ADB_CMD";
-    private static final String ACTION_FILE_COMPRESS = "com.xcheng.xclogger.FILE_COMPRESS";
     private static final String ACTION_CTRL_REQUEST = "com.xcheng.xclogger.CTRL_REQUEST";
     private static final String ACTION_CTRL_RESULT = "com.xcheng.xclogger.CTRL_RESULT";
 
     private static final String EXTRA_CMD_NAME = "cmd_name";
     private static final String CMD_START = "start_xc_log";
     private static final String CMD_STOP = "stop_xc_log";
-    private static final String CMD_FILE_COMPRESS = "file_compress";
 
     private static final String EXTRA_OP_TYPE = "op_type";
 
@@ -54,9 +51,6 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
                 break;
             case ACTION_ADB_CMD:
                 handleAdbCmd(context, intent);
-                break;
-            case ACTION_FILE_COMPRESS:
-                handleControlRequest(context, buildSimpleIntent("trigger_compress", intent));
                 break;
             case ACTION_CTRL_REQUEST:
                 handleControlRequest(context, intent);
@@ -146,9 +140,6 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
             case CMD_STOP:
                 handleControlRequest(context, buildControlIntent("stop"));
                 break;
-            case CMD_FILE_COMPRESS:
-                handleControlRequest(context, buildControlIntent("trigger_compress"));
-                break;
             default:
                 recordOperationHistory(context, "ADB_CMD unknown cmd_name: " + cmd);
                 break;
@@ -164,7 +155,8 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         SourceResolver resolver = new SourceResolver();
         String resolvedSource = resolver.resolveFromBroadcast(context, intent);
         XcLoggerConfig patch = buildConfigPatch(intent);
-        ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch);
+        boolean uploadSuccess = intent.getBooleanExtra("success", false);
+        ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch, uploadSuccess);
 
         CommandSerialExecutor.getInstance().submit(context, request, result -> sendControlResult(context, result));
     }
@@ -185,11 +177,19 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     }
 
     private void sendControlResult(Context context, ControlResult result) {
+        if (result == null || "async_result_pending".equals(result.getMessage())) {
+            return;
+        }
         Intent ret = new Intent(ACTION_CTRL_RESULT);
         ret.putExtra("success", result.isSuccess());
         ret.putExtra("message", result.getMessage());
         ret.putExtra("op_type", result.getOpType());
         ret.putExtra("running_state", result.isRunningState());
+        ret.putExtra("compress_state", result.getCompressState());
+        ret.putExtra("zip_files", result.getZipFiles());
+        ret.putExtra("retry_count", result.getRetryCount());
+        ret.putExtra("max_retry_count", result.getMaxRetryCount());
+        ret.setPackage("com.xcheng.mdm");
         context.sendBroadcast(ret);
     }
 

@@ -15,6 +15,9 @@ interface IXcLoggerService {
 
     // 触发按天压缩并导出到 /data/xclogger/mobilelog
     boolean triggerCompression();
+    boolean reportUploadResult(boolean success);
+    String getCompressStatus();
+    boolean cancelCompressTask();
 
     // 监听器注册
     void registerListener(IXcLoggerListener listener);

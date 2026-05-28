@@ -1,198 +1,307 @@
 # XCLogger 广播控制使用说明（AIDL 对照）
 
-本文档用于说明：如何通过广播方式调用 XCLogger，并与 AIDL 接口能力进行对应。
+本文档说明外部 Demo / 自动化脚本如何通过广播控制 XCLogger。
 
-- 目标读者：工程师、自动化 Agent、LLM
-- 目标：不读源码也能完成日志工具控制与配置更新
+- 控制入口（唯一）：`com.xcheng.xclogger.CTRL_REQUEST`
+- 结果出口（唯一）：`com.xcheng.xclogger.CTRL_RESULT`
+- 外部 Demo 只需注册监听一个广播 action：`com.xcheng.xclogger.CTRL_RESULT`
 
 ---
 
 ## 1. 总览
 
-XCLogger 当前支持两种控制方式：
+XCLogger 支持两种外部控制方式：
 
-1. **AIDL 方式**（绑定 `RemoteBindService`）
-2. **广播方式**（发送 `Intent`）
+1. **广播方式**：无需绑定，适合 ADB、自动化脚本、简单 Demo。
+2. **AIDL 方式**：绑定 `RemoteBindService`，适合 App 内集成和状态回调。
 
-你可以把广播理解为“无绑定、命令式调用”；AIDL理解为“有绑定、接口式调用”。
+所有操作结果（包括异步压缩结果）统一通过 `CTRL_RESULT` 返回。
 
----
+`trigger_compress` 的语义是：**强制开始一轮新的压缩上传流程**。
 
-## 2. 广播协议（核心）
-
-### 2.1 统一控制入口（推荐）
-
-- **Action**：`com.xcheng.xclogger.CTRL_REQUEST`
-- **必填 Extra**：`op_type`
-
-可选的 `op_type`：
-
-- `start`
-- `stop`
-- `restart`
-- `update_config`
-- `trigger_compress`
-- `query_status`
-
-### 2.2 广播回执
-
-- **Action**：`com.xcheng.xclogger.CTRL_RESULT`
-- **回执字段**：
-  - `success`（boolean）
-  - `message`（String）
-  - `op_type`（String）
-  - `running_state`（boolean）
-
-> 建议接收方注册 `BroadcastReceiver` 监听 `CTRL_RESULT`，用于验收动作结果。
+如果当前已有压缩未结束，或已有 zip 正在等待上传结果，XCLogger 会先停止旧流程、清理旧 zip，然后重新开始压缩。中间不返回“调度成功”的中间结果，只在新一轮压缩完成后发送最终 `CTRL_RESULT`。
 
 ---
 
-## 3. AIDL 与广播能力对照表
+## 2. 统一控制广播
 
-| AIDL 接口 | 广播 `op_type` | 说明 |
+### 2.1 请求 Action
+
+```text
+com.xcheng.xclogger.CTRL_REQUEST
+```
+
+### 2.2 必填 Extra
+
+```text
+op_type (String)
+```
+
+### 2.3 支持的 `op_type`
+
+| op_type | 说明 |
+|---|---|
+| `start` | 启动日志采集 |
+| `stop` | 停止日志采集 |
+| `restart` | 重启日志采集 |
+| `update_config` | 部分更新配置 |
+| `query_status` | 查询运行状态 |
+| `trigger_compress` | 强制开始新一轮压缩上传流程 |
+| `upload_result` | 回传上传结果 |
+| `query_compress_status` | 查询压缩/上传状态 |
+| `cancel_compress` | 强制取消压缩/上传状态并删除 zip |
+
+---
+
+## 3. 统一结果广播
+
+### 3.1 回执 Action
+
+```text
+com.xcheng.xclogger.CTRL_RESULT
+```
+
+### 3.2 回执字段
+
+| 字段 | 类型 | 说明 |
 |---|---|---|
-| `startLogging()` | `start` | 启动日志采集 |
-| `stopLogging()` | `stop` | 停止日志采集 |
-| `isRunning()` | `query_status` | 查询状态（通过回执 `running_state` 获取） |
-| `updateConfigurationPartial(config)` | `update_config` | 部分更新配置 |
-| `triggerCompression()` | `trigger_compress` | 触发日志压缩 |
-| （无直接接口） | `restart` | 重启采集服务 |
+| `success` | boolean | 操作是否成功 |
+| `message` | String | 结果或错误说明 |
+| `op_type` | String | 对应请求操作 |
+| `running_state` | boolean | 日志采集状态 |
+| `compress_state` | String | 压缩/上传状态 |
+| `zip_files` | String | 当前待上传 zip，多个用英文逗号分隔 |
+| `retry_count` | int | 当前上传失败次数 |
+| `max_retry_count` | int | 最大失败次数，当前为 3 |
+
+### 3.3 `compress_state` 取值
+
+| 状态 | 说明 |
+|---|---|
+| `IDLE` | 空闲，无压缩任务，无待上传 zip |
+| `COMPRESSING` | 正在压缩 |
+| `WAIT_UPLOAD_RESULT` | 压缩成功，等待外部上传结果 |
+| `CANCELLING` | 正在取消压缩/上传状态 |
 
 ---
 
-## 4. 配置更新（`update_config`）字段说明
+## 4. 压缩流程说明
 
-当 `op_type=update_config` 时，可附带一个或多个字段：
+### 4.1 触发压缩
 
-- `total_size`（int）
-- `file_size`（int）
-- `buffer_size`（int）
-- `log_dir`（String）
-- `log_period`（int）
-- `filter_tag`（String）
-- `filter_level`（String）
-- `filter_package`（String）
-
-规则：
-
-- 未传字段保持当前值不变（部分更新）
-- 运行中更新时，内部会执行重载流程确保配置生效
-
----
-
-## 5. ADB 发送广播示例
-
-> 包名：`com.xcheng.xclogger`
-
-### 5.1 启动日志
-
-```bash
-adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST --es op_type start
-```
-
-### 5.2 停止日志
-
-```bash
-adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST --es op_type stop
-```
-
-### 5.3 重启日志
-
-```bash
-adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST --es op_type restart
-```
-
-### 5.4 触发压缩
+外部发送：
 
 ```bash
 adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST --es op_type trigger_compress
 ```
 
-### 5.5 查询状态
+XCLogger 会异步执行压缩。压缩完成后通过 `CTRL_RESULT` 返回最终结果。
 
-```bash
-adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST --es op_type query_status
+压缩成功：
+
+```text
+CTRL_RESULT ->
+  op_type=trigger_compress
+  success=true
+  message=compress success, waiting upload result
+  compress_state=WAIT_UPLOAD_RESULT
+  zip_files=/data/xclogger/mobilelog/2026_0522_163520_ab12.zip
+  retry_count=0
+  max_retry_count=3
 ```
 
-### 5.6 更新一个配置项（仅改日志目录）
+压缩失败：
+
+```text
+CTRL_RESULT ->
+  op_type=trigger_compress
+  success=false
+  message=失败原因
+  compress_state=IDLE
+  zip_files=
+```
+
+### 4.2 已有流程未结束时再次触发压缩
+
+再次发送 `trigger_compress` 表示强制重开压缩上传流程。
+
+| 当前状态 | 新 `trigger_compress` 行为 |
+|---|---|
+| `IDLE` | 直接开始压缩 |
+| `WAIT_UPLOAD_RESULT` | 删除旧 pending zip，清理上传等待状态，立即开始新压缩 |
+| `COMPRESSING` | 请求取消当前压缩，删除已生成/生成中的 zip，当前线程退出后自动开始新压缩 |
+| `CANCELLING` | 如果仍有压缩线程运行，则等待取消后自动开始新压缩；如果只是残留状态，则清理后直接开始新压缩 |
+
+注意：这种强制重开流程**不会返回中间成功结果**，只在新一轮压缩完成后返回最终：
+
+```text
+CTRL_RESULT ->
+  op_type=trigger_compress
+  success=true/false
+  compress_state=WAIT_UPLOAD_RESULT 或 IDLE
+  zip_files=新一轮 zip 或空
+```
+
+### 4.3 上传结果回传
+
+上传成功：
 
 ```bash
 adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST \
-  --es op_type update_config \
-  --es log_dir /storage/emulated/0/XcLogger_New
+  --es op_type upload_result \
+  --ez success true
 ```
 
-### 5.7 一次更新多个配置项
+返回：
+
+```text
+CTRL_RESULT ->
+  op_type=upload_result
+  success=true
+  message=upload success, compressed files deleted
+  compress_state=IDLE
+  zip_files=
+```
+
+上传失败：
 
 ```bash
 adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST \
-  --es op_type update_config \
-  --ei file_size 8 \
-  --ei buffer_size 8192 \
-  --es filter_tag ActivityManager,MyTag \
-  --es filter_level e
+  --es op_type upload_result \
+  --ez success false
+```
+
+未满 3 次失败：
+
+```text
+CTRL_RESULT ->
+  op_type=upload_result
+  success=false
+  message=upload failed, please retry
+  compress_state=WAIT_UPLOAD_RESULT
+  zip_files=/data/xclogger/mobilelog/2026_0522_163520_ab12.zip
+  retry_count=1
+  max_retry_count=3
+```
+
+外部 Demo 看到 `success=false` 且 `compress_state=WAIT_UPLOAD_RESULT` 且 `zip_files` 非空时，应重新上传同一个 zip。
+
+第 3 次失败：
+
+```text
+CTRL_RESULT ->
+  op_type=upload_result
+  success=false
+  message=upload failed 3 times, compressed files deleted
+  compress_state=IDLE
+  zip_files=
+  retry_count=3
+  max_retry_count=3
+```
+
+### 4.4 查询压缩状态
+
+```bash
+adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST --es op_type query_compress_status
+```
+
+返回示例：
+
+```text
+CTRL_RESULT ->
+  op_type=query_compress_status
+  success=true
+  message=compress_state=WAIT_UPLOAD_RESULT
+  compress_state=WAIT_UPLOAD_RESULT
+  zip_files=/data/xclogger/mobilelog/2026_0522_163520_ab12.zip
+  retry_count=1
+  max_retry_count=3
+```
+
+### 4.5 取消压缩/上传
+
+```bash
+adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST --es op_type cancel_compress
+```
+
+返回示例：
+
+```text
+CTRL_RESULT ->
+  op_type=cancel_compress
+  success=true
+  message=compress upload task cancelled, zip files deleted
+  compress_state=IDLE
+  zip_files=
 ```
 
 ---
 
-## 6. 旧广播兼容说明
+## 5. zip 命名规则
 
-工程仍兼容旧广播：
+压缩按日志日期分组，同一天日志生成一个 zip。文件名格式：
 
-- `com.xcheng.xclogger.ADB_CMD`
-  - `cmd_name=start_xc_log`
-  - `cmd_name=stop_xc_log`
-  - `cmd_name=file_compress`
-- `com.xcheng.xclogger.FILE_COMPRESS`
+```text
+yyyy_MMdd_HHmmss_hash.zip
+```
 
-建议新接入统一使用：`com.xcheng.xclogger.CTRL_REQUEST`。
+规则：
 
----
+- 已结束日期的日志：`HHmmss` 固定为 `235959`
+- 当前设备日期的日志：`HHmmss` 使用触发压缩时的当前设备时间
 
-## 7. 结果处理建议
+示例（当前设备时间 `2026-05-22 16:35:20`）：
 
-接收 `CTRL_RESULT` 后建议做如下处理：
-
-1. 校验 `op_type` 与请求一致
-2. 根据 `success` 判断是否成功
-3. 打印 `message` 作为故障信息
-4. 使用 `running_state` 更新界面状态
+```text
+2026_0520_235959_ab12.zip
+2026_0521_235959_cd34.zip
+2026_0522_163520_ef56.zip
+```
 
 ---
 
-## 8. 重要约束（实现层行为）
+## 6. AIDL 与广播能力对照
 
-- 请求来源由 XCLogger 内部反解析，不信任外部伪造 source。
-- 控制命令在 XCLogger 内部串行执行（一个完成后再执行下一个）。
-- 控制全过程会记录到操作历史文件（History）。
-- 配置更新在运行中会触发生效链路，避免“DB已改、运行未生效”。
-
----
-
-## 9. 常见问题
-
-### Q1：为什么收不到结果广播？
-- 检查是否监听了 `com.xcheng.xclogger.CTRL_RESULT`
-- 检查 XCLogger 是否安装并可接收广播
-- 检查请求参数是否正确（至少有 `op_type`）
-
-### Q2：配置更新后为什么看起来没生效？
-- 先确认回执 `success=true`
-- 再查看 `running_state` 与应用当前状态
-- 检查 `message` 是否提示某一步失败
-
-### Q3：能否一次更新多个配置项？
-- 可以。`update_config` 支持在同一个广播里传多个字段。
+| AIDL 接口 | 广播 `op_type` | 说明 |
+|---|---|---|
+| `startLogging()` | `start` | 启动日志采集 |
+| `stopLogging()` | `stop` | 停止日志采集 |
+| `isRunning()` | `query_status` | 查询运行状态 |
+| `updateConfigurationPartial(config)` | `update_config` | 部分更新配置 |
+| `triggerCompression()` | `trigger_compress` | 强制开始新一轮压缩上传流程 |
+| `reportUploadResult(success)` | `upload_result` | 回传上传结果 |
+| `getCompressStatus()` | `query_compress_status` | 查询压缩/上传状态 |
+| `cancelCompressTask()` | `cancel_compress` | 取消压缩/上传并删除 zip |
+| （无直接接口） | `restart` | 重启采集服务 |
 
 ---
 
-## 10. 最小验收流程（建议）
+## 7. 外部 Demo 推荐广播接入流程
 
-1. `start`
-2. `query_status`（应为 `running_state=true`）
-3. `update_config`（修改 1~2 项）
-4. `trigger_compress`
-5. `stop`
-6. `query_status`（应为 `running_state=false`）
+1. 注册监听 `com.xcheng.xclogger.CTRL_RESULT`。
+2. 需要压缩时直接发送 `CTRL_REQUEST op_type=trigger_compress`。
+3. 等待 `CTRL_RESULT op_type=trigger_compress`：
+   - `success=true` 且 `compress_state=WAIT_UPLOAD_RESULT`：读取 `zip_files`，上传 zip。
+   - `success=false`：压缩失败，查看 `message`。
+4. 上传完成后发送 `CTRL_REQUEST op_type=upload_result --ez success true/false`。
+5. 收到 `CTRL_RESULT op_type=upload_result`：
+   - `success=true`：上传成功，zip 已删除，流程结束。
+   - `success=false` 且 `compress_state=WAIT_UPLOAD_RESULT` 且 `zip_files` 非空：重试上传同一个 zip。
+   - `success=false` 且 `compress_state=IDLE`：失败 3 次，zip 已强制删除，流程结束。
+6. 如果想强制重新压缩，不需要先 query/cancel，直接再次发送 `trigger_compress`。
 
-以上流程跑通后，说明广播控制链路与核心功能可用。
+---
+
+## 8. 行为约束
+
+- 压缩时不会停止日志采集。
+- 如果日志正在运行，XCLogger 会先封口当前日志文件，再新建下一个文件继续写。
+- 本次压缩只压缩封口前的日志快照，不压缩新文件。
+- 同一时间只允许一个实际压缩线程。
+- 再次发送 `trigger_compress` 会强制停止旧压缩上传流程并重新开始。
+- 新压缩开始前会清理旧 zip。
+- 上传成功后删除本次 zip。
+- 上传失败未满 3 次时，外部 Demo 应主动重试上传。
+- 上传失败达到 3 次后强制删除 zip。
+- `cancel_compress` 会强制清理当前压缩/上传状态并删除 zip。
+- 关键操作会记录到 `A_OperationHistory.txt`。
