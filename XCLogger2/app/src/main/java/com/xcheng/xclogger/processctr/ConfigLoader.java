@@ -59,19 +59,21 @@ public class ConfigLoader {
 
             ConfigXmlResult result = loadFromXml(context);
             if (result != null && result.config != null) {
-                if (!db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
-                    Log.e(TAG, "Failed to commit initial config");
-                    return null;
-                }
-                currentConfig = result.config;
+                // 无论 DB 写入是否成功，先用 XML 中的值设置状态标记和当前配置
                 lastInitialAutoStartEnabled = result.initialAutoStartEnabled;
                 lastLoadInitializedFromXml = true;
-                Log.i(TAG, "Config loaded from XML and saved to database");
-                try {
-                    FileManager fm = new FileManager(context);
-                    fm.appendOperationHistory("Config initialized from XML and saved to database (first-time load, initial_auto_start=" + result.initialAutoStartEnabled + ")");
-                } catch (Exception e) {
-                    Log.w(TAG, "Failed to record operation history for initial XML load", e);
+                currentConfig = result.config;
+
+                if (!db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
+                    Log.e(TAG, "Failed to commit initial config, using XML config directly");
+                } else {
+                    Log.i(TAG, "Config loaded from XML and saved to database");
+                    try {
+                        FileManager fm = new FileManager(context);
+                        fm.appendOperationHistory("Config initialized from XML and saved to database (first-time load, initial_auto_start=" + result.initialAutoStartEnabled + ")");
+                    } catch (Exception e) {
+                        Log.w(TAG, "Failed to record operation history for initial XML load", e);
+                    }
                 }
                 return result.config;
             }

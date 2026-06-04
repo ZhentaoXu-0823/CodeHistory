@@ -26,7 +26,7 @@
         <!-- all-No filtering, D, V, W, E (levels name separated by ,)-->
         <level>all</level>
         <!-- all-No filtering (packages name separated by ,) -->
-        <package_name>all</package_name>
+        <package_name>com.e2scorp.d300.launcher.basic,com.e2scorp.d300.nicepay,com.e2scorp.d300.koces</package_name>
     </filtering_rules>
 
 </XcLoggerConfig>

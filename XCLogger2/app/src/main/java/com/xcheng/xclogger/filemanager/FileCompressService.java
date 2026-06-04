@@ -349,11 +349,18 @@ public class FileCompressService extends Service {
             if (f.exists() && f.isFile() && f.getName().endsWith(".zip") && !f.delete())
                 Log.w("FileCompressService", "delete zip failed: " + f);
         }
+        delHistoryFiles();
     }
 
     private static void delAllZip() {
         File[] a = new File(OUT).listFiles(f -> f.isFile() && f.getName().endsWith(".zip"));
         if (a != null) for (File f : a) if (!f.delete()) Log.w("FileCompressService", "delete zip failed: " + f);
+        delHistoryFiles();
+    }
+
+    private static void delHistoryFiles() {
+        File[] a = new File(OUT).listFiles(f -> f.isFile() && f.getName().startsWith(H_PREFIX) && f.getName().endsWith(".txt"));
+        if (a != null) for (File f : a) if (!f.delete()) Log.w("FileCompressService", "delete history failed: " + f);
     }
 
     private static void hist(Context c, String op) {
