@@ -25,6 +25,8 @@ public class FileCompressService extends Service {
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static final SecureRandom RAND = new SecureRandom();
     private static final Pattern P_NEW = Pattern.compile("^mainlog_(\\d{6})_(\\d{8})_.*\\.txt$"), P_OLD = Pattern.compile("^mainlog_(\\d{8})_.*\\.txt$");
+    private String mStartTime;
+    private String mEndTime;
 
     @Override
     public int onStartCommand(Intent in, int flags, int id) {
@@ -65,7 +67,9 @@ public class FileCompressService extends Service {
         db.setUploadFailCount(0);
         db.setCancelCompressRequested(false);
         db.setRestartCompressRequested(false);
-        hist(this, "Compress task started");
+        mStartTime = in != null ? in.getStringExtra("start_time") : null;
+        mEndTime = in != null ? in.getStringExtra("end_time") : null;
+        hist(this, "Compress task started" + ((mStartTime != null || mEndTime != null) ? " (range: " + (mStartTime != null ? mStartTime : "*") + "-" + (mEndTime != null ? mEndTime : "*") + ")" : ""));
         new Thread(() -> {
             boolean restart = false;
             try {
@@ -177,7 +181,8 @@ public class FileCompressService extends Service {
             if (pc != null && pc.isRunning()) sealed = pc.rotateLogFileForCompress();
         }
         List<File> snap = snapshot(dir, sealed);
-        hist(this, "Compress snapshot created: count=" + snap.size() + (sealed != null ? ", sealed=" + sealed.getName() : ""));
+        snap = filterByTimeRange(snap);
+        hist(this, "Compress snapshot created: count=" + snap.size() + (sealed != null ? ", sealed=" + sealed.getName() : "") + (mStartTime != null || mEndTime != null ? ", range=" + (mStartTime != null ? mStartTime : "*") + "-" + (mEndTime != null ? mEndTime : "*") : ""));
         if (snap.isEmpty()) return new ArrayList<>();
         prep();
         cleanHist();
@@ -272,6 +277,65 @@ public class FileCompressService extends Service {
             perm(dst);
         } catch (Exception e) {
             Log.e("FileCompressService", "copy history failed", e);
+        }
+    }
+
+    private List<File> filterByTimeRange(List<File> files) {
+        if (files == null || files.isEmpty()) return files;
+        if (mStartTime == null && mEndTime == null) return files;
+
+        long startTs = -1, endTs = -1;
+        try {
+            if (mStartTime != null && !mStartTime.isEmpty()) startTs = Long.parseLong(mStartTime);
+            if (mEndTime != null && !mEndTime.isEmpty()) endTs = Long.parseLong(mEndTime);
+        } catch (NumberFormatException e) {
+            return files;
+        }
+
+        // 非法参数：起始晚于结束，不做过滤
+        if (startTs >= 0 && endTs >= 0 && startTs > endTs) return files;
+
+        int startIdx = -1;
+        int endIdx = -1;
+
+        for (int i = 0; i < files.size(); i++) {
+            long ft = parseFileTimestamp(files.get(i).getName());
+            if (ft < 0) continue;
+
+            if (startTs >= 0 && ft <= startTs) {
+                startIdx = i;  // 持续更新，取最后一个 ≤ startTime 的文件
+            }
+            if (endTs >= 0 && ft <= endTs) {
+                endIdx = i;
+            }
+        }
+
+        if (mStartTime == null || mStartTime.isEmpty()) startIdx = 0;
+        if (mEndTime == null || mEndTime.isEmpty()) endIdx = files.size() - 1;
+
+        // 起始未找到（所有文件都早于 startTime）→ 从第一个开始
+        if (startIdx == -1) startIdx = 0;
+        // 结束未找到（所有文件都晚于 endTime）→ 无文件可压缩
+        if (endIdx == -1) return new ArrayList<>();
+
+        if (startIdx > endIdx) return new ArrayList<>();
+
+        return files.subList(startIdx, endIdx + 1);
+    }
+
+    private long parseFileTimestamp(String name) {
+        Matcher m = P_NEW.matcher(name);
+        if (!m.matches()) return -1;
+        // m.group(2) = yyyyMMdd (8 digits)
+        String dateStr = m.group(2);
+        // 从文件名中提取 HHmmss：mainlog_000042_20260601_120100_0001.txt
+        String[] parts = name.split("_");
+        if (parts.length < 5) return -1;
+        String timePart = parts[3];
+        try {
+            return Long.parseLong(dateStr + timePart);
+        } catch (NumberFormatException e) {
+            return -1;
         }
     }
 

@@ -38,6 +38,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
         String action = intent.getAction();
         Log.i(TAG, "Received broadcast: " + action);
+        recordOperationHistory(context, "Broadcast received: " + action);
 
         switch (action) {
             case Intent.ACTION_BOOT_COMPLETED:
@@ -48,6 +49,12 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
                 break;
             case Intent.ACTION_MY_PACKAGE_REPLACED:
                 handleMyPackageReplaced(context);
+                break;
+            case Intent.ACTION_PACKAGE_ADDED:
+                handlePackageAdded(context, intent);
+                break;
+            case Intent.ACTION_PACKAGE_REMOVED:
+                handlePackageRemoved(context, intent);
                 break;
             case ACTION_ADB_CMD:
                 handleAdbCmd(context, intent);
@@ -156,7 +163,9 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         String resolvedSource = resolver.resolveFromBroadcast(context, intent);
         XcLoggerConfig patch = buildConfigPatch(intent);
         boolean uploadSuccess = intent.getBooleanExtra("success", false);
-        ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch, uploadSuccess);
+        String startTime = intent.getStringExtra("start_time");
+        String endTime = intent.getStringExtra("end_time");
+        ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch, uploadSuccess, startTime, endTime);
 
         CommandSerialExecutor.getInstance().submit(context, request, result -> sendControlResult(context, result));
     }
@@ -202,5 +211,27 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         } catch (Exception e) {
             Log.e(TAG, "Failed to record operation history", e);
         }
+    }
+
+    private void handlePackageAdded(Context context, Intent intent) {
+        String packageName = PackageEventManager.extractPackageName(intent);
+        if (packageName == null) return;
+        Log.i(TAG, "Package added: " + packageName);
+        PackageEventManager.handlePackageInstalled(context, packageName);
+    }
+
+    private void handlePackageRemoved(Context context, Intent intent) {
+        String packageName = PackageEventManager.extractPackageName(intent);
+        if (packageName == null) return;
+        Log.i(TAG, "Package removed: " + packageName);
+
+        boolean replacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false);
+        if (replacing) {
+            Log.d(TAG, "Package is being replaced (update), skip UID removal");
+            return;
+        }
+
+        int uid = intent.getIntExtra(Intent.EXTRA_UID, -1);
+        PackageEventManager.handlePackageRemoved(context, uid, packageName);
     }
 }

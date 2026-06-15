@@ -8,9 +8,8 @@
 
 - `app/`（实际实现）
 - `xclogger-api/`（AIDL 接口定义）
-- `xclogger_aar/`（AAR 接入说明）
-- `USAGE_BROADCAST.md`（广播控制协议）
-- `xclogger_introduction_v1.1.0.md`（功能说明）
+- `ARCHITECTURE.md`（架构说明）
+- `INTEGRATION.md`（外部集成指南，含广播协议和 AIDL 对照）
 
 ## 2. 功能分层（先给测试边界）
 
@@ -26,6 +25,7 @@
 1. **广播协议接入**：`CTRL_REQUEST` / `CTRL_RESULT`
 2. **AIDL 接入**：`IXcLoggerService` + `IXcLoggerListener`
 3. 兼容旧广播启动/停止：`ADB_CMD`（`start_xc_log` / `stop_xc_log`）
+4. **包事件监听**：PACKAGE_ADDED / PACKAGE_REMOVED（需 Manifest 声明 `<data android:scheme="package" />`）
 
 ### 2.3 实际可提供（系统行为）
 
@@ -65,6 +65,7 @@
 | 编号    | 测试项                      | 测试手法                                              | 验收方式                      | 预期结果                                                |
 | ----- | ------------------------ | ------------------------------------------------- | ------------------------- | --------------------------------------------------- |
 | BR-01 | `start` 启动采集             | 发送 `CTRL_REQUEST op_type=start`                   | 监听 `CTRL_RESULT` + 查询运行状态 | `success=true`，`op_type=start`，`running_state=true` |
+| BR-01b | `trigger_compress` 带时间范围 | `CTRL_REQUEST op_type=trigger_compress --es start_time "..." --es end_time "..."` | 回执 + zip 内容检查 | 仅范围内文件被压缩，参数不传 = 全量 |
 | BR-02 | `stop` 停止采集              | 发送 `op_type=stop`                                 | 回执 + 查询状态                 | `success=true`，`running_state=false`                |
 | BR-03 | `restart` 重启采集           | 发送 `op_type=restart`                              | 回执 + 日志文件继续生成             | `success=true`，重启后仍可采集                              |
 | BR-04 | `query_status` 状态查询      | 发送 `op_type=query_status`                         | 检查回执字段                    | 回执包含 `running_state` 且与实际一致                         |
@@ -84,16 +85,44 @@
 | AI-03 | `getConfiguration`                   | 读取配置对象                                      | 字段完整性检查                    | 返回包含 8 个核心字段且可读                                                |
 | AI-04 | `updateConfigurationPartial`         | 构造部分字段 patch 更新                             | 更新后再次 `getConfiguration`   | 仅 patch 字段变化，其他字段不变                                            |
 | AI-05 | 监听注册/反注册                             | 注册后执行操作，再反注册重复操作                            | 回调计数                       | 注册后有回调，反注册后不再回调                                                |
+| AI-05b | `triggerCompressionWithRange`       | 传入时间范围调用                                   | 返回值 + 回调                      | `true`，压缩结果仅含范围内文件                                |
 | AI-06 | `getCompressStatus`                  | 不同阶段调用（空闲/压缩中/等待上传）                         | 返回字符串解析                    | 格式 `state=...;zip_files=...;retry_count=...;max_retry_count=3` |
 | AI-07 | `cancelCompressTask`                 | 在 WAIT 或 COMPRESSING 调用                     | 状态查询 + 文件检查                | 状态回到 IDLE，待上传 zip 被清理                                          |
 
 
-### C. 压缩上传状态机（核心）
+### B. 过滤规则
+
+| 编号    | 测试项                         | 测试手法                                   | 验收方式                              | 预期结果                                                   |
+| ----- | --------------------------- | -------------------------------------- | --------------------------------- | ------------------------------------------------------ |
+| FL-01 | Tag 精确匹配（多条 OR）          | 配置 `filter_tag=TagA,TagB`，制造 TagA、TagB、TagC 的日志 | 检查日志文件 | 只记录 TagA 和 TagB 的日志，TagC 被过滤 |
+| FL-02 | Level 阈值                    | 配置 `filter_level=e`，制造 e/w/i/d/v 各一条日志   | 检查日志文件 | 只记录 e(Error) 和 f(Fatal) 级别的日志 |
+| FL-03 | Package 精确匹配               | 配置 `filter_package=com.example.app`，安装目标 App | 该 App 日志出现 ✅，其他 App 日志不出现 |
+| FL-04 | **Package 前缀匹配**          | 配置 `filter_package=com.example.`（以 `.` 结尾） | 安装多个 `com.example.xxx` App | 所有匹配前缀的应用日志均被记录 |
+| FL-05 | **Package 设为 all**          | 配置 `filter_package=all`                | 检查日志文件 | 所有应用的日志都被记录（不过滤） |
+| FL-06 | **动态 UID 刷新（广播）**      | 日志运行时安装新应用，包名匹配前缀               | 操作历史 + 日志文件 | 安装后约 10 秒内新 App 的日志出现（PACKAGE_ADDED 或轮询发现） |
+| FL-07 | **动态 UID 刷新（轮询兜底）**  | 禁用 PACKAGE_ADDED 的 Manifest，安装新应用，等待 10~15 秒 | 操作历史 + 日志文件 | `Prefix auto-refresh added X UID(s)` 出现，新 App 日志被记录 |
+| FL-08 | **卸载后 UID 清理**           | 日志运行时卸载已记录的应用                    | 无异常崩溃 | 对应 App 不再产生日志，filterUidSet 无残留 |
+
+### C. 版本推送
+
+| 编号    | 测试项                         | 测试手法                                   | 验收方式                              | 预期结果                                                   |
+| ----- | --------------------------- | -------------------------------------- | --------------------------------- | ------------------------------------------------------ |
+| VU-01 | 版本升级后配置更新               | 旧版 APK（`buffer_size=4096`）→ 安装新版（`buffer_size=2048`）| 启动后检查操作历史 | `Config upgraded from v1 to v2 (buffer_size: 4096 -> 2048, ...)` |
+| VU-02 | 版本相同不改动                  | 连续两次启动同一版本 APK                    | 操作历史 | 无版本升级日志，用户自定义值保留 |
+| VU-03 | config_version 与 database_version 隔离 | DatabaseMigration 升版本不影响配置推送      | 无冲突 | 两个版本号独立增长 |
+
+### D. 压缩上传状态机（核心）
 
 
 | 编号    | 测试项                         | 测试手法                                   | 验收方式                              | 预期结果                                                   |
 | ----- | --------------------------- | -------------------------------------- | --------------------------------- | ------------------------------------------------------ |
 | CP-01 | 首次触发压缩成功                    | `trigger_compress`（广播或 AIDL）           | `CTRL_RESULT` / `onCompressReady` | `success=true`，状态到 `WAIT_UPLOAD_RESULT`，返回 `zip_files` |
+| CP-01b | 按时间范围压缩（双边）             | `trigger_compress` + `start_time`+`end_time` | zip 文件内容检查                     | 仅范围内（含边界）的文件被打包，范围外文件不在 zip 中 |
+| CP-01c | 按时间范围压缩（单边 start）        | `trigger_compress` + 仅 `start_time`          | zip 文件内容检查                     | 从 start 边界到最新文件 |
+| CP-01d | 按时间范围压缩（单边 end）           | `trigger_compress` + 仅 `end_time`            | zip 文件内容检查                     | 从最旧文件到 end 边界 |
+| CP-01e | start 早于所有日志                  | `start_time` 早于最旧日志                       | zip 内容                          | 从第一个文件开始 |
+| CP-01f | end 晚于所有日志                    | `end_time` 晚于最新日志                         | zip 内容                          | 到最后一个文件结束 |
+| CP-01g | 时间范围内外都超出                  | `start_time` 早 && `end_time` 晚               | zip 内容                          | 等效全量压缩 |
 | CP-02 | 压缩失败路径                      | 制造不可用日志目录或 I/O 异常场景                    | 回执字段                              | `success=false`，状态回 `IDLE`，有错误信息                       |
 | CP-03 | WAIT 状态下再次触发（强制重开）          | 在已有 pending zip 时再次 `trigger_compress` | 对比新旧 zip 路径                       | 旧 zip 被清理，生成新一轮结果                                      |
 | CP-04 | COMPRESSING 状态下再次触发         | 压缩过程中再次触发                              | 观察最终仅一轮有效结果                       | 旧压缩被取消并自动重启，最终只看新一轮结果                                  |
@@ -171,12 +200,16 @@
 2. AIDL 接口与回调完整可用
 3. 压缩上传状态机正确，3 次失败策略正确
 4. 不出现崩溃、卡死、状态无法回收
+5. 过滤规则正确（Tag OR、Package 精确/前缀/三者 AND、Level 阈值）
+6. 动态 UID 刷新不导致 ANR 或崩溃
 
 ### P1（应通过）
 
-1. 过滤规则行为正确（Tag OR、Package OR、三者 AND、Level 阈值）
-2. 切分/容量/时效清理策略符合配置
-3. 开机/升级恢复能力正确
+1. 新安装应用能在 10 秒内被自动发现并记录日志
+2. 卸载应用后对应日志消失，无残留 UID
+3. 版本推送：OTA 后新默认值生效，用户自定义值在版本不变时保留
+4. 切分/容量/时效清理策略符合配置
+5. 开机/升级恢复能力正确
 
 ### P2（建议通过）
 

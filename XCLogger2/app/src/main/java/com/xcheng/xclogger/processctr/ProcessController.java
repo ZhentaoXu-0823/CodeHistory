@@ -207,6 +207,10 @@ public class ProcessController {
         return fileManager;
     }
 
+    public SystemLogCatcher getLogCatcher() {
+        return logCatcher;
+    }
+
     /**
      * 获取当前物理运行状态
      * @return true 表示采集器正在工作中

@@ -15,6 +15,8 @@ interface IXcLoggerService {
 
     // 触发按天压缩并导出到 /data/xclogger/mobilelog
     boolean triggerCompression();
+    // 触发按时间范围压缩，startTime/endTime 格式 yyyyMMddHHmmss，传空或不传表示不限制
+    boolean triggerCompressionWithRange(String startTime, String endTime);
     boolean reportUploadResult(boolean success);
     String getCompressStatus();
     boolean cancelCompressTask();

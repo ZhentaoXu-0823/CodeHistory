@@ -16,6 +16,7 @@ import java.io.IOException;
  */
 public class ConfigLoader {
     private static final String TAG = "ConfigLoader";
+    private static final int APK_CONFIG_VERSION = 2;
 
     private static ConfigLoader instance;
     private XcLoggerConfig currentConfig;
@@ -43,6 +44,38 @@ public class ConfigLoader {
         try {
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             lastLoadInitializedFromXml = false;
+
+            // 版本陈旧检查：DB 版本 < APK 版本时，用 XML 全量刷新
+            if (db.getDatabaseVersion() < APK_CONFIG_VERSION) {
+                XcLoggerConfig oldConfig = loadFromDatabase(context);
+                ConfigXmlResult result = loadFromXml(context);
+                if (result != null && result.config != null) {
+                    lastInitialAutoStartEnabled = result.initialAutoStartEnabled;
+                    lastLoadInitializedFromXml = true;
+                    currentConfig = result.config;
+
+                    if (db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
+                        db.setDatabaseVersion(APK_CONFIG_VERSION);
+                        String diff = buildConfigDiff(oldConfig, result.config);
+                        Log.i(TAG, "Config upgraded from v" + (APK_CONFIG_VERSION - 1)
+                                + " to v" + APK_CONFIG_VERSION
+                                + ": " + diff);
+                        try {
+                            FileManager fm = new FileManager(context);
+                            fm.appendOperationHistory("Config upgraded from v" + (APK_CONFIG_VERSION - 1)
+                                    + " to v" + APK_CONFIG_VERSION
+                                    + " (" + diff + ")");
+                        } catch (Exception e) {
+                            Log.w(TAG, "Failed to record operation history for config upgrade", e);
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to save config during version upgrade");
+                    }
+                    return result.config;
+                }
+                // XML 解析失败 => fallthrough 到 DB 兜底，不阻塞启动
+                Log.w(TAG, "XML parse failed during version upgrade, falling back to DB");
+            }
 
             if (db.isConfigInitialized() || db.hasSavedConfig()) {
                 XcLoggerConfig config = loadFromDatabase(context);
@@ -105,6 +138,7 @@ public class ConfigLoader {
 
     public void updateConfig(Context context, XcLoggerConfig config) {
         try {
+            XcLoggerConfig oldConfig = this.currentConfig;
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             db.saveConfig(config);
             this.currentConfig = config;
@@ -112,7 +146,8 @@ public class ConfigLoader {
             Log.i(TAG, "All components should refresh config from ConfigLoader");
             try {
                 FileManager fm = new FileManager(context);
-                fm.appendOperationHistory("Config updated via ConfigLoader.updateConfig (source:ConfigLoader)");
+                String diff = buildConfigDiff(oldConfig, config);
+                fm.appendConfigChangeHistory(diff);
             } catch (Exception e) {
                 Log.w(TAG, "Failed to record operation history for updateConfig", e);
             }
@@ -133,6 +168,10 @@ public class ConfigLoader {
                     return null;
                 }
 
+                // 恢复出厂默认后，同步将 DB 版本对齐到当前 APK 版本
+                db.setDatabaseVersion(APK_CONFIG_VERSION);
+
+                XcLoggerConfig oldConfig = this.currentConfig;
                 this.currentConfig = defaultConfig;
                 this.lastInitialAutoStartEnabled = result.initialAutoStartEnabled;
                 this.lastLoadInitializedFromXml = false;
@@ -141,7 +180,8 @@ public class ConfigLoader {
                 Log.i(TAG, "All components should refresh config from ConfigLoader");
                 try {
                     FileManager fm = new FileManager(context);
-                    fm.appendOperationHistory("Config reset to default (source:ConfigLoader.resetToDefault)");
+                    String diff = buildConfigDiff(oldConfig, defaultConfig);
+                    fm.appendConfigChangeHistory("reset to default (" + diff + ")");
                 } catch (Exception e) {
                     Log.w(TAG, "Failed to record operation history for resetToDefault", e);
                 }
@@ -232,6 +272,34 @@ public class ConfigLoader {
             if (parser != null) {
                 parser.close();
             }
+        }
+    }
+
+    private String buildConfigDiff(XcLoggerConfig old, XcLoggerConfig newCfg) {
+        if (old == null || newCfg == null) return "unknown";
+        StringBuilder sb = new StringBuilder();
+        appendDiff(sb, "total_size", old.getTotalSizeGb(), newCfg.getTotalSizeGb());
+        appendDiff(sb, "file_size", old.getFileSizeMb(), newCfg.getFileSizeMb());
+        appendDiff(sb, "buffer_size", old.getBufferSizeBytes(), newCfg.getBufferSizeBytes());
+        appendDiff(sb, "log_dir", old.getLogDir(), newCfg.getLogDir());
+        appendDiff(sb, "log_period", old.getLogPeriodHours(), newCfg.getLogPeriodHours());
+        appendDiff(sb, "filter_tag", old.getFilterTag(), newCfg.getFilterTag());
+        appendDiff(sb, "filter_level", old.getFilterLevel(), newCfg.getFilterLevel());
+        appendDiff(sb, "filter_package", old.getFilterPackage(), newCfg.getFilterPackage());
+        return sb.length() == 0 ? "no effective changes" : sb.toString();
+    }
+
+    private void appendDiff(StringBuilder sb, String name, int oldV, int newV) {
+        if (oldV != newV) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(name).append(": ").append(oldV).append(" -> ").append(newV);
+        }
+    }
+
+    private void appendDiff(StringBuilder sb, String name, String oldV, String newV) {
+        if (oldV == null ? newV != null : !oldV.equals(newV)) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(name).append(": ").append(oldV).append(" -> ").append(newV);
         }
     }
 

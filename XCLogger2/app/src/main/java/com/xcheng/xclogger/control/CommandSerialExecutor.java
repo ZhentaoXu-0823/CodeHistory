@@ -39,7 +39,14 @@ public class CommandSerialExecutor {
                 case "restart": LogServiceController.restartService(context, request.getChannel() + ":" + request.getResolvedSource()); break;
                 case "update_config": applyConfigUpdate(context, request, db); break;
                 case "trigger_compress":
-                    context.startService(new android.content.Intent(context, FileCompressService.class));
+                    android.content.Intent compressIntent = new android.content.Intent(context, FileCompressService.class);
+                    if (request.hasTimeRange()) {
+                        if (request.getStartTime() != null && !request.getStartTime().isEmpty())
+                            compressIntent.putExtra("start_time", request.getStartTime());
+                        if (request.getEndTime() != null && !request.getEndTime().isEmpty())
+                            compressIntent.putExtra("end_time", request.getEndTime());
+                    }
+                    context.startService(compressIntent);
                     if (controller != null) controller.recordOperationHistory("EXECUTE_END async_pending, op=" + opType);
                     return new ControlResult(true, "async_result_pending", opType, db.loadRunningState(), db.getCompressState(), db.getPendingZipFiles(), db.getUploadFailCount(), 3);
                 case "upload_result": return buildCompressResult(request.getOpType(), FileCompressService.upload(context, request.isUploadSuccess()), db.loadRunningState(), controller);

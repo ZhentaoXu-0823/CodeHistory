@@ -8,6 +8,7 @@ public class XcLoggerDatabase {
     private static final String TAG = "XcLoggerDatabase";
     private static final String PREFS_NAME = "XcLoggerPrefs";
     private static final String K_VERSION = "database_version";
+    private static final String K_CONFIG_VERSION = "config_version";
     private static final String K_OPERATION_HISTORY_PATH = "operation_history_path";
 
     private static final String K_TOTAL_SIZE = "total_size";
@@ -246,11 +247,11 @@ public class XcLoggerDatabase {
     }
 
     public int getDatabaseVersion() {
-        return prefs.getInt(K_VERSION, 1);
+        return prefs.getInt(K_CONFIG_VERSION, 1);
     }
 
     public void setDatabaseVersion(int version) {
-        prefs.edit().putInt(K_VERSION, version).apply();
+        prefs.edit().putInt(K_CONFIG_VERSION, version).apply();
     }
 
     public String getOperationHistoryPath() {

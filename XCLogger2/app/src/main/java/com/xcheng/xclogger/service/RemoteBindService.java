@@ -72,7 +72,12 @@ public class RemoteBindService extends Service {
 
         @Override
         public boolean triggerCompression() throws RemoteException {
-            return submitAndWait("trigger_compress", null).isSuccess();
+            return triggerCompressionWithRange(null, null);
+        }
+
+        @Override
+        public boolean triggerCompressionWithRange(String startTime, String endTime) throws RemoteException {
+            return submitAndWait("trigger_compress", null, startTime, endTime).isSuccess();
         }
 
         @Override
@@ -107,12 +112,16 @@ public class RemoteBindService extends Service {
     };
 
     private ControlResult submitAndWait(String opType, XcLoggerConfig configPatch) {
+        return submitAndWait(opType, configPatch, null, null);
+    }
+
+    private ControlResult submitAndWait(String opType, XcLoggerConfig configPatch, String startTime, String endTime) {
         final Object lock = new Object();
         final ControlResult[] holder = new ControlResult[1];
 
         SourceResolver resolver = new SourceResolver();
         String source = resolver.resolveFromAidl(getApplicationContext());
-        ControlRequest request = new ControlRequest("aidl", opType, source, configPatch);
+        ControlRequest request = new ControlRequest("aidl", opType, source, configPatch, false, startTime, endTime);
 
         CommandSerialExecutor.getInstance().submit(getApplicationContext(), request, result -> {
             holder[0] = result;

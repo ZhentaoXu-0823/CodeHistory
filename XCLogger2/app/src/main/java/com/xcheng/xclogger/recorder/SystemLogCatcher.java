@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import android.util.Log;
 
 import com.xcheng.xclogger.processctr.ProcessController;
+import com.xcheng.xclogger.receiver.PackageEventManager;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -23,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -86,6 +88,11 @@ public class SystemLogCatcher {
     private String filterLevel;             // Level字符串，用于logcat命令和应用层过滤
     private String[] filterPackages;        // Package数组（仅用于日志记录，不用于过滤）
     private Set<Integer> filterUidSet;      // UID Set，用于快速查找（性能优化）- 通过包名查询得到
+
+    // 前缀匹配定时刷新
+    private static final long PREFIX_REFRESH_INTERVAL_MS = 10000; // 10秒刷新一次
+    private long lastPrefixRefreshTime = 0;
+    private boolean hasPrefixFilter = false; // 是否有前缀过滤配置
 
     /**
      * 日志行监听器接口
@@ -360,6 +367,72 @@ public class SystemLogCatcher {
     }
 
     /**
+     * 添加单个包名到 UID 过滤缓存
+     * 用于 PACKAGE_ADDED 广播后，将新安装且匹配过滤规则的包 UID 追加到 filterUidSet
+     * 调用方需确保 packageName 为确切的包名（非前缀）
+     * 使用 ConcurrentHashMap.newKeySet() 保证线程安全
+     * @param packageName 确切的包名
+     */
+    public void addPackageUid(String packageName) {
+        if (packageName == null || packageName.isEmpty()) {
+            return;
+        }
+        int uid = getUidFromPackageName(packageName);
+        if (uid != -1 && filterUidSet.add(uid)) {
+            Log.i(TAG, "New UID added to filter dynamically: " + uid + " (package: " + packageName + ")");
+            lastPrefixRefreshTime = System.currentTimeMillis();
+        }
+    }
+
+    /**
+     * 添加 UID 到过滤缓存（如果不存在），返回是否新添加
+     * 供 PackageEventManager.refreshPrefixUids 调用
+     */
+    public boolean addPackageUidIfNew(int uid) {
+        if (uid < 0) return false;
+        return filterUidSet.add(uid);
+    }
+
+    /**
+     * 从 UID 过滤缓存中移除指定 UID
+     * 用于 PACKAGE_REMOVED 广播后，将已卸载包的 UID 从 filterUidSet 中删除
+     * 注意：卸载时 PackageManager 已无法查到该包，调用方需传入 Intent.EXTRA_UID
+     * @param uid 要移除的 UID
+     */
+    public void removePackageUid(int uid) {
+        if (uid < 0) {
+            return;
+        }
+        filterUidSet.remove(uid);
+        Log.i(TAG, "UID removed from filter: " + uid);
+    }
+
+    /**
+     * 定时刷新前缀匹配的 UID 集合
+     * 委托给 PackageEventManager.refreshPrefixUids 处理
+     */
+    private void refreshPrefixUidSet() {
+        if (!hasPrefixFilter) return;
+        int added = PackageEventManager.refreshPrefixUids(context);
+        if (added > 0) {
+            Log.i(TAG, "Prefix auto-refresh added " + added + " new UID(s), total: " + filterUidSet.size());
+            try {
+                ProcessController ctrl = ProcessController.getInstance(context);
+                if (ctrl != null) {
+                    ctrl.recordOperationHistory("Prefix auto-refresh added " + added + " new UID(s), total " + filterUidSet.size() + " UIDs cached");
+                }
+            } catch (Exception ignore) {}
+        } else if (added < 0) {
+            try {
+                ProcessController ctrl = ProcessController.getInstance(context);
+                if (ctrl != null) {
+                    ctrl.recordOperationHistory("Prefix auto-refresh failed");
+                }
+            } catch (Exception ignore) {}
+        }
+    }
+
+    /**
      * 解析配置并更新过滤数组容器
      * 在启动日志捕获时调用，解析配置字符串为数组容器，用于性能优化
      * 对于Package过滤，通过包名查询UID并存储到UID Set中（仅在启动时查询一次）
@@ -367,6 +440,7 @@ public class SystemLogCatcher {
      */
     private void parseAndUpdateFilterConfig(XcLoggerConfig config) {
         Log.d(TAG, "Starting to parse filter config...");
+        this.hasPrefixFilter = false;
 
         // 解析Filter Tag
         if (config != null && config.getFilterTag() != null && !config.getFilterTag().equals("all")) {
@@ -396,7 +470,7 @@ public class SystemLogCatcher {
 
         // 解析Filter Package并查询对应的UID（仅在启动时查询一次）
         filterPackages = new String[0];
-        filterUidSet = new HashSet<>();
+        filterUidSet = ConcurrentHashMap.newKeySet();
 
         if (config != null && config.getFilterPackage() != null && !config.getFilterPackage().equals("all")) {
             String filterPackageStr = config.getFilterPackage();
@@ -406,24 +480,50 @@ public class SystemLogCatcher {
             List<String> packageList = new ArrayList<>();
             List<Integer> uidList = new ArrayList<>();
 
+            // 预查询所有已安装应用（用于前缀匹配），多个前缀只需一次 IPC
+            List<ApplicationInfo> allInstalledApps = null;
+
             for (String pkg : packages) {
                 String trimmed = pkg.trim();
                 if (!trimmed.isEmpty()) {
                     packageList.add(trimmed);
                     Log.d(TAG, "Processing package: " + trimmed);
-                    // 通过包名查询UID（仅在启动时查询一次）
-                    int uid = getUidFromPackageName(trimmed);
-                    if (uid != -1) {
-                        uidList.add(uid);
-                        Log.i(TAG, "Package " + trimmed + " successfully mapped to UID: " + uid);
+                    if (trimmed.endsWith(".")) {
+                        this.hasPrefixFilter = true;
+                        // 前缀匹配：从所有已安装应用中筛选匹配前缀的包
+                        Log.d(TAG, "Package entry ends with '.', treating as prefix: " + trimmed);
+                        if (packageManager != null && allInstalledApps == null) {
+                            try {
+                                allInstalledApps = packageManager.getInstalledApplications(0);
+                            } catch (Exception e) {
+                                Log.e(TAG, "Failed to query installed apps for prefix match: " + trimmed, e);
+                            }
+                        }
+                        if (allInstalledApps != null) {
+                            for (ApplicationInfo app : allInstalledApps) {
+                                if (app.packageName.startsWith(trimmed)) {
+                                    uidList.add(app.uid);
+                                    Log.d(TAG, "Prefix match: " + app.packageName + " -> UID: " + app.uid);
+                                }
+                            }
+                        }
                     } else {
-                        Log.w(TAG, "Failed to get UID for package: " + trimmed + ", this package will be ignored in filtering");
+                        // 精确包名匹配
+                        Log.d(TAG, "Processing package: " + trimmed);
+                        int uid = getUidFromPackageName(trimmed);
+                        if (uid != -1) {
+                            uidList.add(uid);
+                            Log.i(TAG, "Package " + trimmed + " successfully mapped to UID: " + uid);
+                        } else {
+                            Log.w(TAG, "Failed to get UID for package: " + trimmed + ", this package will be ignored in filtering");
+                        }
                     }
                 }
             }
 
             filterPackages = packageList.toArray(new String[0]);
-            filterUidSet = new HashSet<>(uidList);
+            filterUidSet.clear();
+            filterUidSet.addAll(uidList);
 
             Log.i(TAG, "Package parsing completed - Packages: " + Arrays.toString(filterPackages) +
                     ", UIDs: " + filterUidSet);
@@ -460,7 +560,8 @@ public class SystemLogCatcher {
         // 为每个tag添加level过滤
         for (String tag : filterTags) {
             if (filterLevel != null) {
-                command.append(" ").append(tag).append(":").append(filterLevel);
+                    // logcat 的 Level 参数需要大写（E/W/I/D/V）
+                    command.append(" ").append(tag).append(":").append(filterLevel.toUpperCase());
             } else {
                 // 如果没有level，使用V级别（最低级别，输出所有）
                 command.append(" ").append(tag).append(":V");
@@ -478,6 +579,10 @@ public class SystemLogCatcher {
     private boolean matchesTagFilter(String tag) {
         if (filterTags == null || filterTags.length == 0) {
             return true; // 没有Tag过滤，全部通过
+        }
+        // Tag 已在 logcat 层由 *:S 过滤过，仅当存在 UID 过滤时才需 app 层二次确认
+        if (filterUidSet == null || filterUidSet.isEmpty()) {
+            return true;
         }
         if (tag == null) {
             return false;
@@ -698,6 +803,12 @@ public class SystemLogCatcher {
 
                 // 解析日志行
                 LogLineInfo logInfo = parseLogLine(line);
+
+                // 定时刷新前缀匹配的 UID（仅当有前缀配置时生效）
+                if (filterPackages != null && System.currentTimeMillis() - lastPrefixRefreshTime > PREFIX_REFRESH_INTERVAL_MS) {
+                    refreshPrefixUidSet();
+                    lastPrefixRefreshTime = System.currentTimeMillis();
+                }
 
                 // 应用层过滤：Tag、Level、UID
                 boolean tagMatch = matchesTagFilter(logInfo.tag);
