@@ -16,11 +16,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.*;
 import java.util.zip.*;
 
+import com.xcheng.xclogger.receiver.XcLoggerBroadcastReceiver;
+
 public class FileCompressService extends Service {
     public static final String ACTION_CTRL_RESULT = "com.xcheng.xclogger.CTRL_RESULT";
     public static final String STATE_IDLE = "IDLE", STATE_COMPRESSING = "COMPRESSING", STATE_WAIT_UPLOAD_RESULT = "WAIT_UPLOAD_RESULT", STATE_CANCELLING = "CANCELLING";
     public static final String EXTRA_ZIP_FILES = "zip_files", EXTRA_RETRY_COUNT = "retry_count", EXTRA_MAX_RETRY_COUNT = "max_retry_count", EXTRA_COMPRESS_STATE = "compress_state";
-    private static final String OUT = "/data/xclogger/mobilelog", PARENT = "/data/xclogger", LOG_PREFIX = "mainlog_", H_PREFIX = "A_OperationHistory_", H_NAME = "A_OperationHistory.txt";
+    private static final String OUT = FileManager.COMPRESS_OUTPUT_DIR, PARENT = FileManager.COMPRESS_PARENT_DIR, LOG_PREFIX = "mainlog_", H_PREFIX = "A_OperationHistory_", H_NAME = "A_OperationHistory.txt";
     private static final int MAX_RETRY = 3;
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static final SecureRandom RAND = new SecureRandom();
@@ -181,6 +183,32 @@ public class FileCompressService extends Service {
             if (pc != null && pc.isRunning()) sealed = pc.rotateLogFileForCompress();
         }
         List<File> snap = snapshot(dir, sealed);
+
+        boolean hasTimeRange = (mStartTime != null && !mStartTime.isEmpty())
+                || (mEndTime != null && !mEndTime.isEmpty());
+
+        if (hasTimeRange) {
+            // V2: 基于文件时间戳重叠语义匹配，输出单一 ZIP
+            snap = filterByTimeRangeV2(snap);
+            hist(this, "Compress snapshot created (range): count=" + snap.size()
+                    + (sealed != null ? ", sealed=" + sealed.getName() : "")
+                    + ", range=" + (mStartTime != null ? mStartTime : "*")
+                    + "-" + (mEndTime != null ? mEndTime : "*"));
+            if (snap.isEmpty()) return new ArrayList<>();
+            prep();
+            cleanHist();
+            String zipName = buildRangeZipName() + ".zip";
+            File z = new File(OUT, zipName);
+            zip(z, snap);
+            perm(z);
+            List<File> out = new ArrayList<>();
+            out.add(z);
+            hist(this, "Compressed range to " + z.getAbsolutePath() + ", file_count=" + snap.size());
+            copyHistory(new File(OUT));
+            return out;
+        }
+
+        // === 原按天压缩逻辑（无 ST/ET 时保持不变）===
         snap = filterByTimeRange(snap);
         hist(this, "Compress snapshot created: count=" + snap.size() + (sealed != null ? ", sealed=" + sealed.getName() : "") + (mStartTime != null || mEndTime != null ? ", range=" + (mStartTime != null ? mStartTime : "*") + "-" + (mEndTime != null ? mEndTime : "*") : ""));
         if (snap.isEmpty()) return new ArrayList<>();
@@ -323,6 +351,67 @@ public class FileCompressService extends Service {
         return files.subList(startIdx, endIdx + 1);
     }
 
+    /**
+     * filterByTimeRangeV2 - 基于文件内容时间重叠语义的匹配（需求 V2）
+     *
+     * 核心规则：文件 i 的内容覆盖 [timestamp_i, timestamp_{i+1})
+     * 纳入条件：timestamp_i < ET 且 timestamp_{i+1} > ST
+     * 最后一份文件：timestamp_last < ET 即纳入
+     *
+     * 不传 ST/ET 时返回原列表（由上层决定是否走按天压缩）
+     */
+    private List<File> filterByTimeRangeV2(List<File> files) {
+        if (files == null || files.isEmpty()) return files;
+        if (mStartTime == null && mEndTime == null) return files;
+
+        long startTs = -1, endTs = -1;
+        try {
+            if (mStartTime != null && !mStartTime.isEmpty()) startTs = Long.parseLong(mStartTime);
+            if (mEndTime != null && !mEndTime.isEmpty()) endTs = Long.parseLong(mEndTime);
+        } catch (NumberFormatException e) {
+            return files;
+        }
+
+        // 非法参数：起始晚于结束，不做过滤
+        if (startTs >= 0 && endTs >= 0 && startTs > endTs) return files;
+
+        // 缺省 ST 视为从头开始，缺省 ET 视为到末尾
+        if (startTs < 0) startTs = Long.MIN_VALUE;
+        if (endTs < 0) endTs = Long.MAX_VALUE;
+
+        // 按时间戳排序（保证相邻关系正确）
+        List<File> sorted = new ArrayList<>(files);
+        sorted.sort(Comparator.comparingLong(f -> parseFileTimestamp(f.getName())));
+
+        List<File> result = new ArrayList<>();
+        for (int i = 0; i < sorted.size(); i++) {
+            long fileStart = parseFileTimestamp(sorted.get(i).getName());
+            if (fileStart < 0) continue;
+
+            // 文件 i 的内容结束时间 = 下一个文件的开始时间（若存在），否则 +∞
+            long fileEnd = (i + 1 < sorted.size())
+                    ? parseFileTimestamp(sorted.get(i + 1).getName())
+                    : Long.MAX_VALUE;
+            if (fileEnd < 0) fileEnd = Long.MAX_VALUE;
+
+            // 重叠条件：[fileStart, fileEnd) ∩ [startTs, endTs) ≠ ∅
+            if (fileStart < endTs && fileEnd > startTs) {
+                result.add(sorted.get(i));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * buildRangeZipName - 构建时间范围压缩的 ZIP 文件名
+     * 格式：{ST}-{ET}.zip，缺省部分用 "*" 替代
+     */
+    private String buildRangeZipName() {
+        String st = (mStartTime != null && !mStartTime.isEmpty()) ? mStartTime : "*";
+        String et = (mEndTime != null && !mEndTime.isEmpty()) ? mEndTime : "*";
+        return st + "-" + et;
+    }
+
     private long parseFileTimestamp(String name) {
         Matcher m = P_NEW.matcher(name);
         if (!m.matches()) return -1;
@@ -393,8 +482,10 @@ public class FileCompressService extends Service {
         i.putExtra(EXTRA_ZIP_FILES, z == null ? "" : z);
         i.putExtra(EXTRA_RETRY_COUNT, r);
         i.putExtra(EXTRA_MAX_RETRY_COUNT, MAX_RETRY);
-        i.setPackage("com.xcheng.mdm");
-        c.sendBroadcast(i);
+        for (String pkg : XcLoggerBroadcastReceiver.TARGET_PACKAGES) {
+            i.setPackage(pkg);
+            c.sendBroadcast(i);
+        }
     }
 
     private static String join(List<File> fs) {

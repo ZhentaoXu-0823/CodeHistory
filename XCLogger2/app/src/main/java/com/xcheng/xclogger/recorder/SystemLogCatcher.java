@@ -946,6 +946,8 @@ public class SystemLogCatcher {
         } catch (Exception e) {
             Log.e(TAG, "Unexpected error in readErrorOutput", e);
         } finally {
+            if (reader != null) try { reader.close(); } catch (IOException ignored) { }
+            if (errorStream != null) try { errorStream.close(); } catch (IOException ignored) { }
             Log.d(TAG, "readErrorOutput thread exited");
         }
     }

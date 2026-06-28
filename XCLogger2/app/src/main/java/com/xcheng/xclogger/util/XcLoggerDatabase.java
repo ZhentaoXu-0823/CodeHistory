@@ -103,7 +103,7 @@ public class XcLoggerDatabase {
             config.setTotalSizeGb(prefs.getInt(K_TOTAL_SIZE, 4));
             config.setFileSizeMb(prefs.getInt(K_FILE_SIZE, 4));
             config.setBufferSizeBytes(prefs.getInt(K_BUFFER_SIZE, 1024));
-            config.setLogDir(prefs.getString(K_LOG_DIR, "/storage/emulated/0/XcLogger"));
+            config.setLogDir(prefs.getString(K_LOG_DIR, com.xcheng.xclogger.filemanager.FileManager.DEFAULT_LOG_DIR));
             config.setLogPeriodHours(prefs.getInt(K_LOG_PERIOD, 168));
             config.setFilterTag(prefs.getString(K_FILTER_TAG, "all"));
             config.setFilterLevel(prefs.getString(K_FILTER_LEVEL, "all"));

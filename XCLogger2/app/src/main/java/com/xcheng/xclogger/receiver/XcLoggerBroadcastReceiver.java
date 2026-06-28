@@ -18,6 +18,10 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  * XcLoggerBroadcastReceiver - 统一广播接收器
  */
 public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
+    public static final String[] TARGET_PACKAGES = {
+        "com.xcheng.mdm",
+        "com.xcheng.xcloggertestdemo"
+    };
     private static final String TAG = "XcLoggerBroadcastReceiver";
 
     private static final String ACTION_ADB_CMD = "com.xcheng.xclogger.ADB_CMD";
@@ -165,7 +169,8 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         boolean uploadSuccess = intent.getBooleanExtra("success", false);
         String startTime = intent.getStringExtra("start_time");
         String endTime = intent.getStringExtra("end_time");
-        ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch, uploadSuccess, startTime, endTime);
+        String configFilePath = intent.getStringExtra("config_file_path");
+        ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch, uploadSuccess, startTime, endTime, configFilePath);
 
         CommandSerialExecutor.getInstance().submit(context, request, result -> sendControlResult(context, result));
     }
@@ -198,8 +203,10 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         ret.putExtra("zip_files", result.getZipFiles());
         ret.putExtra("retry_count", result.getRetryCount());
         ret.putExtra("max_retry_count", result.getMaxRetryCount());
-        ret.setPackage("com.xcheng.mdm");
-        context.sendBroadcast(ret);
+        for (String pkg : TARGET_PACKAGES) {
+            ret.setPackage(pkg);
+            context.sendBroadcast(ret);
+        }
     }
 
     private void recordOperationHistory(Context context, String operation) {

@@ -31,7 +31,9 @@ public class FileManager {
     private static final long MIN_FILE_LIFETIME_MS = 10 * 1000;
 
     private static final String DEFAULT_OPERATION_HISTORY_PATH = "/storage/emulated/0/XcLogger";
-    private static final String COMPRESS_OUTPUT_DIR = "/data/xclogger/mobilelog";
+    public static final String DEFAULT_LOG_DIR = "/storage/emulated/0/XcLogger";
+    public static final String COMPRESS_PARENT_DIR = "/data/xclogger";
+    public static final String COMPRESS_OUTPUT_DIR = "/data/xclogger/mobilelog";
     private static final SimpleDateFormat ZIP_DATE_FORMAT = new SimpleDateFormat("yyyy_MMdd", Locale.getDefault());
 
     private Context context;
@@ -106,7 +108,7 @@ public class FileManager {
         if (config != null && config.getLogDir() != null) {
             this.mainLogDir = new File(config.getLogDir());
         } else {
-            this.mainLogDir = new File("/storage/emulated/0/XcLogger");
+            this.mainLogDir = new File(DEFAULT_LOG_DIR);
         }
 
         if (!mainLogDir.exists()) {

@@ -5,10 +5,14 @@ import android.content.res.XmlResourceParser;
 import android.util.Log;
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.filemanager.FileManager;
+import com.xcheng.xclogger.control.PartialConfigMerger;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
+import org.xmlpull.v1.XmlPullParserFactory;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 
 /**
@@ -206,65 +210,76 @@ public class ConfigLoader {
         }
     }
 
+    /**
+     * Parse XcLoggerConfig fields from an XmlPullParser (shared by loadFromXml and loadFromXmlFile).
+     * If outAutoStart is non-null, also captures auto_start_enabled value.
+     */
+    private static XcLoggerConfig parseConfigFromParser(XmlPullParser parser, boolean[] outAutoStart)
+            throws XmlPullParserException, IOException {
+        XcLoggerConfig config = new XcLoggerConfig();
+        boolean inFilteringRules = false;
+
+        int eventType = parser.getEventType();
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            if (eventType == XmlPullParser.START_TAG) {
+                String tagName = parser.getName();
+                if ("filtering_rules".equals(tagName)) {
+                    inFilteringRules = true;
+                } else if (inFilteringRules) {
+                    switch (tagName) {
+                        case "tag":
+                            config.setFilterTag(parser.nextText());
+                            break;
+                        case "level":
+                            config.setFilterLevel(parser.nextText());
+                            break;
+                        case "package_name":
+                            config.setFilterPackage(parser.nextText());
+                            break;
+                    }
+                } else {
+                    switch (tagName) {
+                        case "total_size":
+                            config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
+                            break;
+                        case "file_size":
+                            config.setFileSizeMb(Integer.parseInt(parser.nextText()));
+                            break;
+                        case "buffer_size":
+                            config.setBufferSizeBytes(Integer.parseInt(parser.nextText()));
+                            break;
+                        case "log_dir":
+                            config.setLogDir(parser.nextText());
+                            break;
+                        case "log_period":
+                            config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
+                            break;
+                        default:
+                            if (outAutoStart != null && "auto_start_enabled".equals(tagName)) {
+                                outAutoStart[0] = Boolean.parseBoolean(parser.nextText());
+                            }
+                            break;
+                    }
+                }
+            } else if (eventType == XmlPullParser.END_TAG) {
+                if ("filtering_rules".equals(parser.getName())) {
+                    inFilteringRules = false;
+                }
+            }
+            eventType = parser.next();
+        }
+
+        return config;
+    }
+
     private ConfigXmlResult loadFromXml(Context context) {
         XmlResourceParser parser = null;
         try {
             parser = context.getResources().getXml(R.xml.default_config);
-            XcLoggerConfig config = new XcLoggerConfig();
-            boolean initialAutoStartEnabled = false;
-            boolean inFilteringRules = false;
-
-            int eventType = parser.getEventType();
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.START_TAG) {
-                    String tagName = parser.getName();
-                    if ("filtering_rules".equals(tagName)) {
-                        inFilteringRules = true;
-                    } else if (inFilteringRules) {
-                        switch (tagName) {
-                            case "tag":
-                                config.setFilterTag(parser.nextText());
-                                break;
-                            case "level":
-                                config.setFilterLevel(parser.nextText());
-                                break;
-                            case "package_name":
-                                config.setFilterPackage(parser.nextText());
-                                break;
-                        }
-                    } else {
-                        switch (tagName) {
-                            case "total_size":
-                                config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
-                                break;
-                            case "file_size":
-                                config.setFileSizeMb(Integer.parseInt(parser.nextText()));
-                                break;
-                            case "buffer_size":
-                                config.setBufferSizeBytes(Integer.parseInt(parser.nextText()));
-                                break;
-                            case "log_dir":
-                                config.setLogDir(parser.nextText());
-                                break;
-                            case "log_period":
-                                config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
-                                break;
-                            case "auto_start_enabled":
-                                initialAutoStartEnabled = Boolean.parseBoolean(parser.nextText());
-                                break;
-                        }
-                    }
-                } else if (eventType == XmlPullParser.END_TAG) {
-                    String tagName = parser.getName();
-                    if ("filtering_rules".equals(tagName)) {
-                        inFilteringRules = false;
-                    }
-                }
-                eventType = parser.next();
-            }
-
+            boolean[] autoStartHolder = new boolean[1];
+            XcLoggerConfig config = parseConfigFromParser(parser, autoStartHolder);
             Log.i(TAG, "Config loaded from XML file");
-            return new ConfigXmlResult(config, initialAutoStartEnabled);
+            return new ConfigXmlResult(config, autoStartHolder[0]);
         } catch (XmlPullParserException | IOException e) {
             Log.e(TAG, "Error parsing XML config file", e);
             return null;
@@ -300,6 +315,113 @@ public class ConfigLoader {
         if (oldV == null ? newV != null : !oldV.equals(newV)) {
             if (sb.length() > 0) sb.append(", ");
             sb.append(name).append(": ").append(oldV).append(" -> ").append(newV);
+        }
+    }
+
+    /**
+     * loadFromXmlFile - 从磁盘文件解析 XML 配置
+     * 缺省标签保持 Java 默认值（int=0, String=null），
+     * 由 PartialConfigMerger 决定是否覆盖当前值
+     * @param file XML 配置文件
+     * @return 解析后的 XcLoggerConfig，失败返回 null
+     */
+    public XcLoggerConfig loadFromXmlFile(File file) {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
+            parser.setInput(fis, "UTF-8");
+
+            XcLoggerConfig config = parseConfigFromParser(parser, null);
+
+            Log.i(TAG, "Config loaded from XML file: " + file.getAbsolutePath());
+            return config;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load config from XML file: " + file.getAbsolutePath(), e);
+            return null;
+        }
+    }
+
+    /**
+     * importFromXmlFile - 从文件导入配置，合并后写入 DB 并记录变更
+     *
+     * 只修改 DB 中的配置字段（不影响 database_version），
+     * 不干扰 APK OTA (APK_CONFIG_VERSION) 或 AIDL updateConfigurationPartial 路径。
+     *
+     * @param context  Android Context
+     * @param filePath XML 配置文件路径
+     * @return true 导入成功（含无变更场景），false 失败
+     */
+    public boolean importFromXmlFile(Context context, String filePath) {
+        try {
+            File file = new File(filePath);
+            if (!file.exists()) {
+                Log.e(TAG, "Config file not found: " + filePath);
+                return false;
+            }
+
+            XcLoggerConfig patch = loadFromXmlFile(file);
+            if (patch == null) {
+                Log.e(TAG, "Failed to parse config file: " + filePath);
+                return false;
+            }
+
+            XcLoggerConfig current = this.currentConfig;
+            if (current == null) {
+                current = load(context);
+            }
+            if (current == null) {
+                Log.e(TAG, "Cannot import config: no current config available");
+                return false;
+            }
+
+            // 合并：缺省字段保持当前值
+            XcLoggerConfig merged = new PartialConfigMerger().merge(current, patch);
+
+            // 构建差异日志
+            String diff = buildConfigDiff(current, merged);
+            Log.i(TAG, "Import config diff: " + diff);
+
+            // 记录操作历史
+            try {
+                FileManager fm = new FileManager(context);
+                fm.appendOperationHistory("Config import from file: " + filePath + " (" + diff + ")");
+            } catch (Exception ignored) {
+            }
+
+            // 无有效变更则跳过重启
+            if ("no effective changes".equals(diff)) {
+                // 仍尝试删除文件（若存在则清理）
+                if (file.exists()) file.delete();
+                Log.i(TAG, "Import config: no effective changes, skipping restart");
+                return true;
+            }
+
+            // stop → update → start（与 AIDL updateConfigurationPartial 相同模式）
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+            boolean wasRunning = db.loadRunningState();
+            if (wasRunning) {
+                LogServiceController.stopLogService(context, "import_config");
+            }
+
+            updateConfig(context, merged);
+
+            if (wasRunning) {
+                LogServiceController.startLogService(context, "import_config");
+            }
+
+            // 关键操作全部成功后删除配置文件，防止重复导入
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Failed to delete config file after import: " + filePath);
+            }
+
+            Log.i(TAG, "Config imported from file: " + filePath + " (" + diff + ")");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to import config from file: " + filePath, e);
+            try {
+                new FileManager(context).appendOperationHistory("Config import failed: " + filePath + " - " + e.getMessage());
+            } catch (Exception ignored) {
+            }
+            return false;
         }
     }
 

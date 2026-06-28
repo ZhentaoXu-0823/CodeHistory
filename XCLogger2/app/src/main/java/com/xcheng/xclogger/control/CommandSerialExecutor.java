@@ -38,6 +38,16 @@ public class CommandSerialExecutor {
                 case "stop": LogServiceController.stopLogService(context, request.getChannel() + ":" + request.getResolvedSource()); break;
                 case "restart": LogServiceController.restartService(context, request.getChannel() + ":" + request.getResolvedSource()); break;
                 case "update_config": applyConfigUpdate(context, request, db); break;
+                case "import_config":
+                    String cfgPath = request.getConfigFilePath();
+                    if (cfgPath == null || cfgPath.isEmpty()) {
+                        cfgPath = com.xcheng.xclogger.filemanager.FileManager.DEFAULT_LOG_DIR + "/config.xml";
+                    }
+                    boolean imported = ConfigLoader.getInstance().importFromXmlFile(context, cfgPath);
+                    if (controller != null) {
+                        controller.recordOperationHistory("EXECUTE_END success=" + imported + ", op=" + opType + ", file=" + cfgPath);
+                    }
+                    return new ControlResult(imported, imported ? "ok" : "import failed", opType, db.loadRunningState(), db.getCompressState(), db.getPendingZipFiles(), db.getUploadFailCount(), 3);
                 case "trigger_compress":
                     android.content.Intent compressIntent = new android.content.Intent(context, FileCompressService.class);
                     if (request.hasTimeRange()) {

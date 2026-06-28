@@ -129,6 +129,6 @@ public class DatabaseMigration {
         }
 
         // 如果无法获取配置，使用默认目录路径
-        return "/storage/emulated/0/XcLogger";
+        return com.xcheng.xclogger.filemanager.FileManager.DEFAULT_LOG_DIR;
     }
 }
