@@ -3,6 +3,8 @@ package com.xcheng.xclogger.recorder;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -89,6 +91,19 @@ public class SystemLogCatcher {
     private String[] filterPackages;        // Package数组（仅用于日志记录，不用于过滤）
     private Set<Integer> filterUidSet;      // UID Set，用于快速查找（性能优化）- 通过包名查询得到
 
+    // --- White+Black list fields (v1.2.2) ---
+    private Set<String>  tagBlacklistSet;
+    private Set<Integer> uidBlacklistSet;
+    private Set<Integer> levelBlacklistSet;
+    private Set<String>  contentWhitelistSet;
+    private Set<String>  contentBlacklistSet;
+    private volatile FilterPipeline.FilterState filterState;
+    private boolean tagIsAll;
+
+    private volatile boolean stoppedIntentionally = false;
+    private int logcatRestartCount = 0;
+    private XcLoggerConfig cachedConfig;
+    private Handler handler;
     // 前缀匹配定时刷新
     private static final long PREFIX_REFRESH_INTERVAL_MS = 10000; // 10秒刷新一次
     private long lastPrefixRefreshTime = 0;
@@ -114,6 +129,7 @@ public class SystemLogCatcher {
         this.context = context;
         this.packageManager = context != null ? context.getPackageManager() : null;
         this.executor = Executors.newCachedThreadPool();
+        this.handler = new Handler(Looper.getMainLooper());
         Log.d(TAG, "SystemLogCatcher initialized with context: " + (context != null ? "not null" : "null"));
     }
 
@@ -129,6 +145,9 @@ public class SystemLogCatcher {
 
         try {
             // 解析配置并更新过滤数组容器（包括通过包名查询UID）
+            this.stoppedIntentionally = false;
+            this.cachedConfig = config;
+            this.logcatRestartCount = 0;
             parseAndUpdateFilterConfig(config);
 
             String logcatCommand = buildLogcatCommand(config);
@@ -178,6 +197,7 @@ public class SystemLogCatcher {
      * 停止日志捕获
      */
     public void stopCapture() {
+        this.stoppedIntentionally = true;
         if (!running.get()) {
             Log.w(TAG, "LogCatcher is not running");
             return;
@@ -241,17 +261,25 @@ public class SystemLogCatcher {
                 boolean isAlive = logcatProcess.isAlive();
                 Log.i(TAG, "Process monitor check (500ms): isAlive=" + isAlive);
 
-                if (!isAlive && running.get()) {
+                if (!isAlive && running.get() && !stoppedIntentionally) {
                     try {
                         int exitValue = logcatProcess.exitValue();
                         Log.e(TAG, "Process exited unexpectedly with exit code: " + exitValue);
-                        running.set(false);
 
-                        // 记录操作历史
-                        ProcessController processController = ProcessController.getInstance();
-                        if (processController != null) {
-                            processController.recordOperationHistory("Logcat process exited unexpectedly with code: " + exitValue);
+                        ProcessController pc = ProcessController.getInstance();
+                        if (pc != null) {
+                            pc.recordOperationHistory("Logcat process exited unexpectedly with code: " + exitValue + ", will attempt auto-restart");
                         }
+
+                        scheduleRestart();
+                    } catch (IllegalThreadStateException e) {
+                        Log.d(TAG, "Process state changed during check");
+                    }
+                } else if (!isAlive && running.get() && stoppedIntentionally) {
+                    try {
+                        int exitValue = logcatProcess.exitValue();
+                        Log.i(TAG, "Process exited after intentional stop, code: " + exitValue);
+                        running.set(false);
                     } catch (IllegalThreadStateException e) {
                         Log.d(TAG, "Process state changed during check");
                     }
@@ -264,18 +292,26 @@ public class SystemLogCatcher {
 
                 if (logcatProcess != null) {
                     boolean isAlive = logcatProcess.isAlive();
-                    if (!isAlive && running.get()) {
+                                        if (!isAlive && running.get() && !stoppedIntentionally) {
                         try {
                             int exitValue = logcatProcess.exitValue();
                             Log.e(TAG, "Process exited during monitoring with exit code: " + exitValue);
-                            running.set(false);
 
-                            ProcessController processController = ProcessController.getInstance();
-                            if (processController != null) {
-                                processController.recordOperationHistory("Logcat process exited during monitoring with code: " + exitValue);
+                            ProcessController pc = ProcessController.getInstance();
+                            if (pc != null) {
+                                pc.recordOperationHistory("Logcat process exited during monitoring with code: " + exitValue + ", will attempt auto-restart");
                             }
+
+                            scheduleRestart();
                         } catch (IllegalThreadStateException e) {
-                            // 进程状态变化，忽略
+                        }
+                        break;
+                    } else if (!isAlive && running.get() && stoppedIntentionally) {
+                        try {
+                            int exitValue = logcatProcess.exitValue();
+                            Log.i(TAG, "Process exited after intentional stop, monitor exiting");
+                            running.set(false);
+                        } catch (IllegalThreadStateException e) {
                         }
                         break;
                     }
@@ -288,6 +324,72 @@ public class SystemLogCatcher {
         } catch (Exception e) {
             Log.e(TAG, "Error in process monitor", e);
         }
+    }
+
+    /**
+     * Delay-restart logcat after unexpected process exit.
+     * Uses exponential backoff: 10s, 20s, 40s, 80s (max).
+     */
+    private void scheduleRestart() {
+        int delaySeconds = 10 * (int) Math.pow(2, Math.min(logcatRestartCount, 3));
+        logcatRestartCount++;
+
+        ProcessController pc = ProcessController.getInstance();
+        if (pc != null) {
+            pc.recordOperationHistory(
+                "Logcat restart attempt " + logcatRestartCount + ", scheduled in " + delaySeconds + "s");
+        }
+        Log.w(TAG, "Scheduling logcat restart attempt " + logcatRestartCount
+            + " in " + delaySeconds + "s");
+
+        running.set(false);
+
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                ProcessController pc2 = ProcessController.getInstance();
+                if (pc2 != null) {
+                    pc2.recordOperationHistory(
+                        "Logcat restart attempt " + logcatRestartCount + " executing");
+                }
+                if (stoppedIntentionally) {
+                    Log.i(TAG, "Restart skipped: user stopped logging during restart delay");
+                    return;
+                }
+                if (cachedConfig == null) {
+                    Log.e(TAG, "Restart failed: no cached config available");
+                    return;
+                }
+                Log.i(TAG, "Executing logcat restart attempt " + logcatRestartCount);
+                startCapture(cachedConfig);
+                if (!isRunning()) {
+                    Log.e(TAG, "Restart attempt " + logcatRestartCount + " failed: startCapture did not result in running state");
+                    if (pc2 != null) {
+                        pc2.recordOperationHistory(
+                            "Logcat restart attempt " + logcatRestartCount + " failed");
+                    }
+                    scheduleRestart();
+                }
+            }
+        }, delaySeconds * 1000L);
+    }
+
+
+    /**
+     * Periodically refresh prefix-matched UIDs.
+     * Runs every 10s independently of the logcat reader thread.
+     */
+    private void prefixPollingLoop() {
+        while (running.get()) {
+            try {
+                Thread.sleep(PREFIX_REFRESH_INTERVAL_MS);
+                if (!running.get()) break;
+                refreshPrefixUidSet();
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
+        Log.d(TAG, "prefixPollingLoop exited");
     }
 
     /**
@@ -886,7 +988,6 @@ public class SystemLogCatcher {
         } catch (Exception e) {
             Log.e(TAG, "Unexpected error in readLogcatOutput", e);
         } finally {
-            running.set(false);
             Log.i(TAG, "readLogcatOutput thread exited");
         }
     }
