@@ -152,6 +152,93 @@
             android:padding="12dp"
             android:inputType="text"
             android:hint="Filter package"
+            android:layout_marginBottom="16dp" />
+
+        <!-- ===== v1.2.2: White+Black list extensions ===== -->
+
+        <!-- Filter Tag Blacklist -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Tag Blacklist"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_tag_blacklist"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Tag blacklist (comma-separated)"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Filter Package Blacklist -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Package Blacklist"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_package_blacklist"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Package blacklist (comma-separated)"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Filter Level Blacklist -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Level Blacklist"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_level_blacklist"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Level blacklist (v,d,i,w,e,f comma-separated)"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Filter Content -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Content (Whitelist)"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_content"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Content whitelist keywords (comma-separated)"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Filter Content Blacklist -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Filter Content Blacklist"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+        <EditText
+            android:id="@+id/et_filter_content_blacklist"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_rounded_gray"
+            android:padding="12dp"
+            android:inputType="text"
+            android:hint="Content blacklist keywords (comma-separated)"
             android:layout_marginBottom="24dp" />
 
         <!-- Save Button -->

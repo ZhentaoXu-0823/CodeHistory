@@ -254,6 +254,21 @@ public class ConfigLoader {
                         case "log_period":
                             config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
                             break;
+                        case "tag_blacklist":
+                            config.setFilterTagBlacklist(parser.nextText());
+                            break;
+                        case "package_blacklist":
+                            config.setFilterPackageBlacklist(parser.nextText());
+                            break;
+                        case "level_blacklist":
+                            config.setFilterLevelBlacklist(parser.nextText());
+                            break;
+                        case "content":
+                            config.setFilterContent(parser.nextText());
+                            break;
+                        case "content_blacklist":
+                            config.setFilterContentBlacklist(parser.nextText());
+                            break;
                         default:
                             if (outAutoStart != null && "auto_start_enabled".equals(tagName)) {
                                 outAutoStart[0] = Boolean.parseBoolean(parser.nextText());

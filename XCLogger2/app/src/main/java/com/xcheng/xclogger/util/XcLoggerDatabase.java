@@ -19,6 +19,11 @@ public class XcLoggerDatabase {
     private static final String K_FILTER_TAG = "filter_tag";
     private static final String K_FILTER_LEVEL = "filter_level";
     private static final String K_FILTER_PACKAGE = "filter_package";
+    private static final String K_FILTER_TAG_BLACKLIST = "filter_tag_blacklist";
+    private static final String K_FILTER_PACKAGE_BLACKLIST = "filter_package_blacklist";
+    private static final String K_FILTER_LEVEL_BLACKLIST = "filter_level_blacklist";
+    private static final String K_FILTER_CONTENT = "filter_content";
+    private static final String K_FILTER_CONTENT_BLACKLIST = "filter_content_blacklist";
 
     public static final String K_IS_RUNNING = "is_running";
     public static final String K_FILE_INDEX = "file_index"; // 全局日志文件序号
@@ -108,6 +113,11 @@ public class XcLoggerDatabase {
             config.setFilterTag(prefs.getString(K_FILTER_TAG, "all"));
             config.setFilterLevel(prefs.getString(K_FILTER_LEVEL, "all"));
             config.setFilterPackage(prefs.getString(K_FILTER_PACKAGE, "all"));
+            config.setFilterTagBlacklist(prefs.getString(K_FILTER_TAG_BLACKLIST, ""));
+            config.setFilterPackageBlacklist(prefs.getString(K_FILTER_PACKAGE_BLACKLIST, ""));
+            config.setFilterLevelBlacklist(prefs.getString(K_FILTER_LEVEL_BLACKLIST, ""));
+            config.setFilterContent(prefs.getString(K_FILTER_CONTENT, ""));
+            config.setFilterContentBlacklist(prefs.getString(K_FILTER_CONTENT_BLACKLIST, ""));
             Log.i(TAG, "Config loaded from database");
             return config;
         } catch (Exception e) {

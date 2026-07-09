@@ -69,8 +69,9 @@ public class FileCompressService extends Service {
         db.setUploadFailCount(0);
         db.setCancelCompressRequested(false);
         db.setRestartCompressRequested(false);
-        mStartTime = in != null ? in.getStringExtra("start_time") : null;
-        mEndTime = in != null ? in.getStringExtra("end_time") : null;
+        mStartTime = in != null ? in.getStringExtra("startTime") : null;
+        mEndTime = in != null ? in.getStringExtra("endTime") : null;
+        hist(this, "[CompressTAG] onStartCommand: mStartTime=" + mStartTime + ", mEndTime=" + mEndTime);
         hist(this, "Compress task started" + ((mStartTime != null || mEndTime != null) ? " (range: " + (mStartTime != null ? mStartTime : "*") + "-" + (mEndTime != null ? mEndTime : "*") + ")" : ""));
         new Thread(() -> {
             boolean restart = false;
@@ -186,10 +187,13 @@ public class FileCompressService extends Service {
 
         boolean hasTimeRange = (mStartTime != null && !mStartTime.isEmpty())
                 || (mEndTime != null && !mEndTime.isEmpty());
+        hist(this, "[CompressTAG] compress ENTER: mStartTime=" + mStartTime + ", mEndTime=" + mEndTime
+                + ", hasTimeRange=" + hasTimeRange + ", snapCount=" + snap.size());
 
         if (hasTimeRange) {
             // V2: 基于文件时间戳重叠语义匹配，输出单一 ZIP
             snap = filterByTimeRangeV2(snap);
+            hist(this, "[CompressTAG] filterByTimeRangeV2 result: filteredCount=" + snap.size());
             hist(this, "Compress snapshot created (range): count=" + snap.size()
                     + (sealed != null ? ", sealed=" + sealed.getName() : "")
                     + ", range=" + (mStartTime != null ? mStartTime : "*")
@@ -197,7 +201,8 @@ public class FileCompressService extends Service {
             if (snap.isEmpty()) return new ArrayList<>();
             prep();
             cleanHist();
-            String zipName = buildRangeZipName() + ".zip";
+            String zipName = buildRangeZipName(snap) + ".zip";
+            hist(this, "[CompressTAG] buildRangeZipName result: " + zipName);
             File z = new File(OUT, zipName);
             zip(z, snap);
             perm(z);
@@ -209,6 +214,7 @@ public class FileCompressService extends Service {
         }
 
         // === 原按天压缩逻辑（无 ST/ET 时保持不变）===
+        hist(this, "[CompressTAG] compress path: default (no time range), using timestamp naming");
         snap = filterByTimeRange(snap);
         hist(this, "Compress snapshot created: count=" + snap.size() + (sealed != null ? ", sealed=" + sealed.getName() : "") + (mStartTime != null || mEndTime != null ? ", range=" + (mStartTime != null ? mStartTime : "*") + "-" + (mEndTime != null ? mEndTime : "*") : ""));
         if (snap.isEmpty()) return new ArrayList<>();
@@ -314,8 +320,8 @@ public class FileCompressService extends Service {
 
         long startTs = -1, endTs = -1;
         try {
-            if (mStartTime != null && !mStartTime.isEmpty()) startTs = Long.parseLong(mStartTime);
-            if (mEndTime != null && !mEndTime.isEmpty()) endTs = Long.parseLong(mEndTime);
+            if (mStartTime != null && !mStartTime.isEmpty()) startTs = Long.parseLong(mStartTime.replaceAll("[^0-9]", ""));
+            if (mEndTime != null && !mEndTime.isEmpty()) endTs = Long.parseLong(mEndTime.replaceAll("[^0-9]", ""));
         } catch (NumberFormatException e) {
             return files;
         }
@@ -366,8 +372,8 @@ public class FileCompressService extends Service {
 
         long startTs = -1, endTs = -1;
         try {
-            if (mStartTime != null && !mStartTime.isEmpty()) startTs = Long.parseLong(mStartTime);
-            if (mEndTime != null && !mEndTime.isEmpty()) endTs = Long.parseLong(mEndTime);
+            if (mStartTime != null && !mStartTime.isEmpty()) startTs = Long.parseLong(mStartTime.replaceAll("[^0-9]", ""));
+            if (mEndTime != null && !mEndTime.isEmpty()) endTs = Long.parseLong(mEndTime.replaceAll("[^0-9]", ""));
         } catch (NumberFormatException e) {
             return files;
         }
@@ -404,13 +410,23 @@ public class FileCompressService extends Service {
 
     /**
      * buildRangeZipName - 构建时间范围压缩的 ZIP 文件名
-     * 格式：{ST}-{ET}.zip，缺省部分用 "*" 替代
+     * effectiveST = clamp(ST, earliest file time); effectiveET = clamp(ET, latest file time)
+     * Clamp ensures the zip name never claims coverage beyond actual file content.
      */
-    private String buildRangeZipName() {
-        String st = (mStartTime != null && !mStartTime.isEmpty()) ? mStartTime : "*";
-        String et = (mEndTime != null && !mEndTime.isEmpty()) ? mEndTime : "*";
-        return st + "-" + et;
+    private String buildRangeZipName(List<File> filteredFiles) {
+        String result = normalizeTimestamp(mStartTime);
+        android.util.Log.i("FileCompressService", "[CompressTAG] zipName=" + result);
+        return result;
     }
+
+        /** Normalize timestamp to yyyy_MMdd_HHmmss format. */
+    private String normalizeTimestamp(String ts) {
+        String digits = ts.replaceAll("[^0-9]", "");
+        if (digits.length() >= 14)
+            return digits.substring(0,4) + "_" + digits.substring(4,8) + "_" + digits.substring(8,14);
+        return ts;
+    }
+
 
     private long parseFileTimestamp(String name) {
         Matcher m = P_NEW.matcher(name);

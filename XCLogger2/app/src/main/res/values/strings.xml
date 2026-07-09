@@ -54,4 +54,10 @@
     <!-- LogCaptureService -->
     <string name="notif_title">XCLogger</string>
     <string name="notif_content">XCLogger is running</string>
+    <!-- v1.2.2: white+black list -->
+    <string name="hint_filter_tag_blacklist">Tag blacklist (comma-separated)</string>
+    <string name="hint_filter_package_blacklist">Package blacklist (comma-separated)</string>
+    <string name="hint_filter_level_blacklist">Level blacklist (v,d,i,w,e,f comma-separated)</string>
+    <string name="hint_filter_content">Content whitelist keywords (comma-separated)</string>
+    <string name="hint_filter_content_blacklist">Content blacklist keywords (comma-separated)</string>
 </resources>

@@ -52,10 +52,12 @@ public class CommandSerialExecutor {
                     android.content.Intent compressIntent = new android.content.Intent(context, FileCompressService.class);
                     if (request.hasTimeRange()) {
                         if (request.getStartTime() != null && !request.getStartTime().isEmpty())
-                            compressIntent.putExtra("start_time", request.getStartTime());
+                            compressIntent.putExtra("startTime", request.getStartTime());
                         if (request.getEndTime() != null && !request.getEndTime().isEmpty())
-                            compressIntent.putExtra("end_time", request.getEndTime());
+                            compressIntent.putExtra("endTime", request.getEndTime());
                     }
+                    // [CompressTAG] trace
+                    if (controller != null) controller.recordOperationHistory("[CompressTAG] CMD trigger_compress: hasTimeRange=" + request.hasTimeRange() + ", ST=" + request.getStartTime() + ", ET=" + request.getEndTime());
                     context.startService(compressIntent);
                     if (controller != null) controller.recordOperationHistory("EXECUTE_END async_pending, op=" + opType);
                     return new ControlResult(true, "async_result_pending", opType, db.loadRunningState(), db.getCompressState(), db.getPendingZipFiles(), db.getUploadFailCount(), 3);

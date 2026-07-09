@@ -167,9 +167,15 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         String resolvedSource = resolver.resolveFromBroadcast(context, intent);
         XcLoggerConfig patch = buildConfigPatch(intent);
         boolean uploadSuccess = intent.getBooleanExtra("success", false);
-        String startTime = intent.getStringExtra("start_time");
-        String endTime = intent.getStringExtra("end_time");
+        String startTime = intent.getStringExtra("startTime");
+        String endTime = intent.getStringExtra("endTime");
         String configFilePath = intent.getStringExtra("config_file_path");
+        // [CompressTAG] trace
+        if ("trigger_compress".equals(opType) || "import_config".equals(opType)) {
+            android.util.Log.i("XcLoggerBroadcastReceiver", "[CompressTAG] RX broadcast: opType=" + opType
+                    + ", startTime=" + startTime + ", endTime=" + endTime
+                    + ", file=" + configFilePath);
+        }
         ControlRequest request = new ControlRequest("broadcast", opType, resolvedSource, patch, uploadSuccess, startTime, endTime, configFilePath);
 
         CommandSerialExecutor.getInstance().submit(context, request, result -> sendControlResult(context, result));
@@ -186,6 +192,12 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         if (intent.hasExtra("filter_tag")) patch.setFilterTag(intent.getStringExtra("filter_tag"));
         if (intent.hasExtra("filter_level")) patch.setFilterLevel(intent.getStringExtra("filter_level"));
         if (intent.hasExtra("filter_package")) patch.setFilterPackage(intent.getStringExtra("filter_package"));
+        // v1.2.2: white+black list extensions
+        if (intent.hasExtra("filter_tag_blacklist")) patch.setFilterTagBlacklist(intent.getStringExtra("filter_tag_blacklist"));
+        if (intent.hasExtra("filter_package_blacklist")) patch.setFilterPackageBlacklist(intent.getStringExtra("filter_package_blacklist"));
+        if (intent.hasExtra("filter_level_blacklist")) patch.setFilterLevelBlacklist(intent.getStringExtra("filter_level_blacklist"));
+        if (intent.hasExtra("filter_content")) patch.setFilterContent(intent.getStringExtra("filter_content"));
+        if (intent.hasExtra("filter_content_blacklist")) patch.setFilterContentBlacklist(intent.getStringExtra("filter_content_blacklist"));
 
         return patch;
     }
