@@ -2,6 +2,7 @@ package com.xcheng.xclogger.service;
 
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.service.IXcLoggerListener;
+import android.os.ParcelFileDescriptor;
 
 interface IXcLoggerService {
     // 业务控制
@@ -20,6 +21,8 @@ interface IXcLoggerService {
     boolean reportUploadResult(boolean success);
     String getCompressStatus();
     boolean cancelCompressTask();
+
+    ParcelFileDescriptor getLogZip();
 
     // 监听器注册
     void registerListener(IXcLoggerListener listener);

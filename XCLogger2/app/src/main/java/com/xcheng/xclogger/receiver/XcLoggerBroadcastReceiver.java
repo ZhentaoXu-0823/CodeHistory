@@ -184,7 +184,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     private XcLoggerConfig buildConfigPatch(Intent intent) {
         XcLoggerConfig patch = new XcLoggerConfig();
 
-        if (intent.hasExtra("total_size")) patch.setTotalSizeGb(intent.getIntExtra("total_size", 0));
+        if (intent.hasExtra("total_size")) patch.setTotalSizeMb(intent.getIntExtra("total_size", 0));
         if (intent.hasExtra("file_size")) patch.setFileSizeMb(intent.getIntExtra("file_size", 0));
         if (intent.hasExtra("buffer_size")) patch.setBufferSizeBytes(intent.getIntExtra("buffer_size", 0));
         if (intent.hasExtra("log_dir")) patch.setLogDir(intent.getStringExtra("log_dir"));

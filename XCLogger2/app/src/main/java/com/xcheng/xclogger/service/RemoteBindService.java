@@ -8,8 +8,11 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.os.IBinder;
 import android.os.RemoteCallbackList;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.util.Log;
+import java.io.File;
+import java.io.IOException;
 import com.xcheng.xclogger.control.CommandSerialExecutor;
 import com.xcheng.xclogger.control.ControlRequest;
 import com.xcheng.xclogger.control.ControlResult;
@@ -98,6 +101,55 @@ public class RemoteBindService extends Service {
             FileCompressService.Result result = FileCompressService.cancel(getApplicationContext());
             notifyOperationResult(new ControlResult(result.success, result.message, "cancel_compress", new XcLoggerDatabase(getApplicationContext()).loadRunningState(), result.state, result.zipFiles, result.retryCount, result.maxRetryCount));
             return result.success;
+        }
+
+        @Override
+        public ParcelFileDescriptor getLogZip() {
+            XcLoggerDatabase db = new XcLoggerDatabase(getApplicationContext());
+            String state = db.getCompressState();
+            if (!"WAIT_UPLOAD_RESULT".equals(state)) {
+                throw new RuntimeException("No pending zip. State: " + state);
+            }
+            String zipPath = db.getPendingZipFiles();
+            if (zipPath == null || zipPath.isEmpty()) {
+                throw new RuntimeException("Zip path empty");
+            }
+            File f = new File(zipPath.split(",")[0].trim());
+            if (!f.exists()) {
+                throw new RuntimeException("Zip not found: " + f.getAbsolutePath());
+            }
+            try {
+                // Use pipe to avoid SELinux avc denial on enforcing devices.
+                // Pipe transfers file content via XCLogger's system_app context,
+                // so the untrusted caller never touches the zip file directly.
+                ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
+                ParcelFileDescriptor readEnd = pipe[0];
+                ParcelFileDescriptor writeEnd = pipe[1];
+
+                final File zipFile = f;
+                new Thread("getLogZip-pipe") {
+                    @Override
+                    public void run() {
+                        try (java.io.FileInputStream fis = new java.io.FileInputStream(zipFile);
+                             java.io.FileOutputStream fos = new java.io.FileOutputStream(writeEnd.getFileDescriptor())) {
+                            byte[] buf = new byte[8192];
+                            int n;
+                            while ((n = fis.read(buf)) != -1) {
+                                fos.write(buf, 0, n);
+                            }
+                            fos.flush();
+                        } catch (IOException e) {
+                            Log.e(TAG, "Pipe transfer failed", e);
+                        } finally {
+                            try { writeEnd.close(); } catch (IOException ignored) {}
+                        }
+                    }
+                }.start();
+
+                return readEnd;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         @Override

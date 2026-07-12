@@ -65,6 +65,12 @@ public class CommandSerialExecutor {
                 case "query_compress_status": return buildCompressResult(request.getOpType(), FileCompressService.query(context), db.loadRunningState(), controller);
                 case "cancel_compress": return buildCompressResult(request.getOpType(), FileCompressService.cancel(context), db.loadRunningState(), controller);
                 case "query_status": break;
+                case "query_files_dir": {
+                    String logDir = ConfigLoader.getInstance().getCurrentConfig().getLogDir();
+                    return new ControlResult(true, logDir, opType, true);
+                }
+                case "query_zip_dir":
+                    return new ControlResult(true, "/data/xclogger/mobilelog", opType, true);
                 default: return new ControlResult(false, "unknown op_type", opType, db.loadRunningState());
             }
             boolean running = db.loadRunningState();
