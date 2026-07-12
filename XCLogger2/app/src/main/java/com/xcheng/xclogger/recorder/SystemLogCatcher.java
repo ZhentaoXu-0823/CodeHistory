@@ -670,6 +670,11 @@ public class SystemLogCatcher {
             }
         }
 
+        // Append CRITICAL_TAGS (crash logs) to bypass *:S filter
+        for (String ct : FilterPipeline.CRITICAL_TAGS) {
+            command.append(" ").append(ct).append(":V");
+        }
+
         return command.toString();
     }
 
@@ -913,6 +918,8 @@ public class SystemLogCatcher {
                 }
 
                 // 应用层过滤：Tag、Level、UID
+                // Critical crash tags bypass all filters (AndroidRuntime/DEBUG/libc)
+                boolean isCritical = FilterPipeline.CRITICAL_TAGS.contains(logInfo.tag);
                 boolean tagMatch = matchesTagFilter(logInfo.tag);
                 boolean levelMatch = matchesLevelFilter(logInfo.level);
                 boolean uidMatch = matchesUidFilter(logInfo.uid);
@@ -925,8 +932,8 @@ public class SystemLogCatcher {
                             ", UidMatch: " + uidMatch);
                 }
 
-                // 全部通过才保留
-                if (tagMatch && levelMatch && uidMatch) {
+                // 全部通过才保留（崩溃日志跳过 UID 检查）
+                if (isCritical || (tagMatch && levelMatch && uidMatch)) {
                     // 匹配所有过滤条件，保留该行
                     savedCount++;
                     byte[] lineBytes = line.getBytes();
