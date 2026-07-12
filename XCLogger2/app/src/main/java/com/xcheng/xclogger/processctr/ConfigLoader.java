@@ -240,7 +240,7 @@ public class ConfigLoader {
                 } else {
                     switch (tagName) {
                         case "total_size":
-                            config.setTotalSizeGb(Integer.parseInt(parser.nextText()));
+                            config.setTotalSizeMb(Integer.parseInt(parser.nextText()));
                             break;
                         case "file_size":
                             config.setFileSizeMb(Integer.parseInt(parser.nextText()));
@@ -290,7 +290,13 @@ public class ConfigLoader {
     private ConfigXmlResult loadFromXml(Context context) {
         XmlResourceParser parser = null;
         try {
-            parser = context.getResources().getXml(R.xml.default_config);
+            // Dynamically select config XML based on build flavor
+            String configName = context.getString(R.string.flavor_config);
+            int resId = context.getResources().getIdentifier(configName, "xml", context.getPackageName());
+            if (resId == 0) {
+                resId = R.xml.default_config; // fallback
+            }
+            parser = context.getResources().getXml(resId);
             boolean[] autoStartHolder = new boolean[1];
             XcLoggerConfig config = parseConfigFromParser(parser, autoStartHolder);
             Log.i(TAG, "Config loaded from XML file");
@@ -308,7 +314,7 @@ public class ConfigLoader {
     private String buildConfigDiff(XcLoggerConfig old, XcLoggerConfig newCfg) {
         if (old == null || newCfg == null) return "unknown";
         StringBuilder sb = new StringBuilder();
-        appendDiff(sb, "total_size", old.getTotalSizeGb(), newCfg.getTotalSizeGb());
+        appendDiff(sb, "total_size", old.getTotalSizeMb(), newCfg.getTotalSizeMb());
         appendDiff(sb, "file_size", old.getFileSizeMb(), newCfg.getFileSizeMb());
         appendDiff(sb, "buffer_size", old.getBufferSizeBytes(), newCfg.getBufferSizeBytes());
         appendDiff(sb, "log_dir", old.getLogDir(), newCfg.getLogDir());

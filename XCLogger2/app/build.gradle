@@ -2,6 +2,8 @@ plugins {
     id 'com.android.application'
 }
 
+apply from: '../keystore.gradle'
+
 android {
     namespace 'com.xcheng.xclogger'
     compileSdk 33
@@ -12,11 +14,13 @@ android {
         targetSdk 33
         versionCode 8
         versionName "1.2.13"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            // Force debug build to use flavor's signingConfig (not default debug key)
+            signingConfig null
+        }
         release {
             // 启用混淆与资源压缩
             minifyEnabled true
@@ -27,6 +31,36 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    signingConfigs {
+        keystoreConfigs.each { name, cfg ->
+            if (cfg.storePath != null && !cfg.storePath.isEmpty()) {
+                create(name) {
+                    storeFile file(cfg.storePath)
+                    storePassword cfg.storePassword
+                    keyAlias cfg.keyAlias
+                    keyPassword cfg.keyPassword
+                }
+            }
+        }
+    }
+
+    flavorDimensions "customer"
+
+    productFlavors {
+        p1416TPinelabs {
+            dimension "customer"
+            applicationId keystoreConfigs.p1416TPinelabs.applicationId
+            resValue "string", "flavor_config", "p1416t_pinelabs_default_config"
+            signingConfig keystoreConfigs.p1416TPinelabs.storePath ? signingConfigs.p1416TPinelabs : null
+        }
+        common {
+            dimension "customer"
+            applicationId "com.xcheng.xclogger"
+            resValue "string", "flavor_config", "default_config"
+            signingConfig signingConfigs.debug
+        }
     }
 
     applicationVariants.all { variant ->
@@ -61,4 +95,17 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+afterEvaluate {
+    // Restore test tasks lost when productFlavors were added
+    tasks.register('assembleDebugUnitTest')     { dependsOn 'assembleCommonDebugUnitTest' }
+    tasks.register('assembleReleaseUnitTest')   { dependsOn 'assembleCommonReleaseUnitTest' }
+    tasks.register('assembleDebugAndroidTest')  { dependsOn 'assembleCommonDebugAndroidTest' }
+    tasks.register('assembleReleaseAndroidTest'){ dependsOn 'assembleCommonReleaseAndroidTest' }
+
+    // Build APK(s): select 'commonDebug' variant to build ALL flavor APKs
+    tasks.named('assembleCommonDebug').configure {
+        dependsOn 'assembleP1416TPinelabsDebug'
+    }
 }
