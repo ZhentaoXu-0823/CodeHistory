@@ -25,10 +25,12 @@
         <activity
             android:name=".MainActivity"
             android:exported="true">
+            <!-- intent-filter hidden to remove launcher icon
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            -->
         </activity>
 
         <!-- 配置界面 -->
