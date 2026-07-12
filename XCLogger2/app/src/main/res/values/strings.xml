@@ -21,7 +21,7 @@
     <string name="config_title">Config</string>
     <string name="btn_save_config">SAVE</string>
     <string name="warn_config_disabled">Log is running, configuration modification is disabled</string>
-    <string name="hint_total_size">Total size in GB</string>
+    <string name="hint_total_size">Total size in MB</string>
     <string name="hint_file_size">File size in MB</string>
     <string name="hint_buffer_size">Buffer size in bytes</string>
     <string name="hint_log_dir">Log directory path</string>

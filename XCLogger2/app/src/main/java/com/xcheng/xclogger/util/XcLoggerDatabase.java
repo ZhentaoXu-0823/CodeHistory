@@ -76,7 +76,7 @@ public class XcLoggerDatabase {
     }
 
     private void putConfig(SharedPreferences.Editor editor, XcLoggerConfig config) {
-        editor.putInt(K_TOTAL_SIZE, config.getTotalSizeGb());
+        editor.putInt(K_TOTAL_SIZE, config.getTotalSizeMb());
         editor.putInt(K_FILE_SIZE, config.getFileSizeMb());
         editor.putInt(K_BUFFER_SIZE, config.getBufferSizeBytes());
         editor.putString(K_LOG_DIR, config.getLogDir());
@@ -105,7 +105,7 @@ public class XcLoggerDatabase {
     public XcLoggerConfig loadConfig() {
         try {
             XcLoggerConfig config = new XcLoggerConfig();
-            config.setTotalSizeGb(prefs.getInt(K_TOTAL_SIZE, 4));
+            config.setTotalSizeMb(prefs.getInt(K_TOTAL_SIZE, 1024));
             config.setFileSizeMb(prefs.getInt(K_FILE_SIZE, 4));
             config.setBufferSizeBytes(prefs.getInt(K_BUFFER_SIZE, 1024));
             config.setLogDir(prefs.getString(K_LOG_DIR, com.xcheng.xclogger.filemanager.FileManager.DEFAULT_LOG_DIR));

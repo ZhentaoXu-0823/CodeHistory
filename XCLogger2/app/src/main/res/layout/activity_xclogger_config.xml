@@ -22,7 +22,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Total Size (GB)"
+            android:text="Total Size (MB)"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
         <EditText
@@ -32,7 +32,7 @@
             android:background="@drawable/bg_rounded_gray"
             android:padding="12dp"
             android:inputType="number"
-            android:hint="Total size in GB"
+            android:hint="Total size in MB"
             android:layout_marginBottom="16dp" />
 
         <!-- File Size -->

@@ -449,7 +449,7 @@ public class FileManager {
         try {
             long currentSize = getTotalLogSize();
             long maxFileSize = config.getFileSizeMb() * 1024L * 1024L;
-            long totalSizeLimit = config.getTotalSizeGb() * 1024L * 1024L * 1024L;
+            long totalSizeLimit = config.getTotalSizeMb() * 1024L * 1024L;
 
             return (currentSize + maxFileSize) > totalSizeLimit;
         } catch (Exception e) {

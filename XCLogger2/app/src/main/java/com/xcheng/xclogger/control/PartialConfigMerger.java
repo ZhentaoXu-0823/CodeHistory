@@ -12,7 +12,7 @@ public class PartialConfigMerger {
         }
 
         XcLoggerConfig merged = new XcLoggerConfig();
-        merged.setTotalSizeGb(patch.getTotalSizeGb() > 0 ? patch.getTotalSizeGb() : current.getTotalSizeGb());
+        merged.setTotalSizeMb(patch.getTotalSizeMb() > 0 ? patch.getTotalSizeMb() : current.getTotalSizeMb());
         merged.setFileSizeMb(patch.getFileSizeMb() > 0 ? patch.getFileSizeMb() : current.getFileSizeMb());
         merged.setBufferSizeBytes(validateBufferSize(patch.getBufferSizeBytes() > 0 ? patch.getBufferSizeBytes() : current.getBufferSizeBytes()));
         merged.setLogDir(isNotEmpty(patch.getLogDir()) ? patch.getLogDir() : current.getLogDir());

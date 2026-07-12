@@ -77,7 +77,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
     private void refreshConfigFromLoader() {
         this.config = ConfigLoader.getInstance().getCurrentConfig();
         if (config != null) {
-            etTotalSize.setText(String.valueOf(config.getTotalSizeGb()));
+            etTotalSize.setText(String.valueOf(config.getTotalSizeMb()));
             etFileSize.setText(String.valueOf(config.getFileSizeMb()));
             etBufferSize.setText(String.valueOf(config.getBufferSizeBytes()));
             etLogDir.setText(config.getLogDir());
@@ -193,7 +193,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             String filterPackage = normalizeMultiValue(etFilterPackage.getText().toString());
 
             XcLoggerConfig newConfig = new XcLoggerConfig();
-            newConfig.setTotalSizeGb(Integer.parseInt(etTotalSize.getText().toString()));
+            newConfig.setTotalSizeMb(Integer.parseInt(etTotalSize.getText().toString()));
             newConfig.setFileSizeMb(Integer.parseInt(etFileSize.getText().toString()));
             newConfig.setBufferSizeBytes(Integer.parseInt(etBufferSize.getText().toString()));
             newConfig.setLogDir(etLogDir.getText().toString());

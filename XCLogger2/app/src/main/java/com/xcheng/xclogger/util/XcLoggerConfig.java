@@ -4,7 +4,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 
 public class XcLoggerConfig implements Parcelable {
-	private int totalSizeGb;
+	private int totalSizeMb;
 	private int fileSizeMb;
 	private int bufferSizeBytes;
 	private String logDir;
@@ -21,7 +21,7 @@ public class XcLoggerConfig implements Parcelable {
 	public XcLoggerConfig() {}
 
 	protected XcLoggerConfig(Parcel in) {
-		totalSizeGb = in.readInt();
+		totalSizeMb = in.readInt();
 		fileSizeMb = in.readInt();
 		bufferSizeBytes = in.readInt();
 		logDir = in.readString();
@@ -48,7 +48,7 @@ public class XcLoggerConfig implements Parcelable {
 
 	@Override
 	public void writeToParcel(Parcel dest, int flags) {
-		dest.writeInt(totalSizeGb);
+		dest.writeInt(totalSizeMb);
 		dest.writeInt(fileSizeMb);
 		dest.writeInt(bufferSizeBytes);
 		dest.writeString(logDir);
@@ -64,8 +64,8 @@ public class XcLoggerConfig implements Parcelable {
 	}
 
 	// --- Getter 和 Setter (原有内容保持不变) ---
-	public int getTotalSizeGb() { return totalSizeGb; }
-	public void setTotalSizeGb(int totalSizeGb) { this.totalSizeGb = totalSizeGb; }
+	public int getTotalSizeMb() { return totalSizeMb; }
+	public void setTotalSizeMb(int totalSizeMb) { this.totalSizeMb = totalSizeMb; }
 	public int getFileSizeMb() { return fileSizeMb; }
 	public void setFileSizeMb(int fileSizeMb) { this.fileSizeMb = fileSizeMb; }
 	public int getBufferSizeBytes() { return bufferSizeBytes; }
