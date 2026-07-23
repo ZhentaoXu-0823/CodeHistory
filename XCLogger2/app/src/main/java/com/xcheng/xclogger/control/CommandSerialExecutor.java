@@ -112,7 +112,7 @@ public class CommandSerialExecutor {
     private String buildConfigDiff(XcLoggerConfig oldConfig, XcLoggerConfig newConfig) {
         if (oldConfig == null || newConfig == null) return "unknown";
         StringBuilder diff = new StringBuilder();
-        appendIntDiff(diff, "total_size_gb", oldConfig.getTotalSizeGb(), newConfig.getTotalSizeGb());
+        appendIntDiff(diff, "total_size_gb", oldConfig.getTotalSizeMb(), newConfig.getTotalSizeMb());
         appendIntDiff(diff, "file_size_mb", oldConfig.getFileSizeMb(), newConfig.getFileSizeMb());
         appendIntDiff(diff, "buffer_size_bytes", oldConfig.getBufferSizeBytes(), newConfig.getBufferSizeBytes());
         appendStringDiff(diff, "log_dir", oldConfig.getLogDir(), newConfig.getLogDir());

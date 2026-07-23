@@ -509,8 +509,16 @@ public class SystemLogCatcher {
         Log.i(TAG, "UID removed from filter: " + uid);
     }
 
+
     /**
-     * 定时刷新前缀匹配的 UID 集合
+     * Check whether the logcat subprocess is ACTUALLY alive (OS-level PID check).
+     * Unlike running.get() which is an in-memory flag, this verifies the real process.
+     */
+    public boolean isLogcatAlive() {
+        return logcatProcess != null && logcatProcess.isAlive();
+    }
+
+    /**匹配的 UID 集合
      * 委托给 PackageEventManager.refreshPrefixUids 处理
      */
     private void refreshPrefixUidSet() {

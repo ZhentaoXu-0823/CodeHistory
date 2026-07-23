@@ -3,6 +3,7 @@ package com.xcheng.xclogger.processctr;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
+import java.util.concurrent.atomic.AtomicBoolean;
 import com.xcheng.xclogger.service.LogCaptureService;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
@@ -18,10 +19,24 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
  */
 public class LogServiceController {
     private static final String TAG = "LogServiceController";
+    private static final AtomicBoolean sServiceActive = new AtomicBoolean(false);
 
     /**
      * 启动日志服务
      */
+    /**
+     * Mark the service as active (called by LogCaptureService.onCreate).
+     * This prevents duplicate start attempts from MY_PACKAGE_REPLACED 
+     * when PMS has already triggered startForegroundService.
+     */
+    public static void setServiceActive(boolean active) {
+        if (active) {
+            sServiceActive.compareAndSet(false, true);
+        } else {
+            sServiceActive.set(false);
+        }
+    }
+
     public static void startLogService(Context context) {
         startLogService(context, "user");
     }
@@ -31,6 +46,11 @@ public class LogServiceController {
      * @param source 触发来源，如 user/boot/broadcast:<action>/restart/internal
      */
     public static void startLogService(Context context, String source) {
+        // Guard: PMS may have already started the service (e.g. after APK upgrade)
+        if (!sServiceActive.compareAndSet(false, true)) {
+            Log.d(TAG, "Log service already active, skipping duplicate start");
+            return;
+        }
         try {
             Log.i(TAG, "Starting log service");
             recordOperationHistory(context, "Log service start requested (source:" + source + ")");
@@ -65,6 +85,7 @@ public class LogServiceController {
      */
     public static void stopLogService(Context context, String source) {
         try {
+            sServiceActive.set(false);
             Log.i(TAG, "Stopping log service");
             recordOperationHistory(context, "Log service stop requested (source:" + source + ")");
 

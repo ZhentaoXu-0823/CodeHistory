@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <XcLoggerConfig xmlns:android="http://schemas.android.com/apk/res/android">
 
-<!--  Total size （GB）  -->
+<!--  Total size （MB）  -->
     <total_size>1024</total_size>
 
 <!--  Log file max size （MB）  -->

@@ -12,6 +12,7 @@ import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.service.RemoteBindService;
 import com.xcheng.xclogger.util.XcLoggerConfig;
+import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 /**
@@ -20,7 +21,9 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
 public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
     public static final String[] TARGET_PACKAGES = {
         "com.xcheng.mdm",
-        "com.xcheng.xcloggertestdemo"
+        "com.xcheng.xcloggertestdemo",
+        "com.xcheng.xclogger",
+        "com.ko.xclogger"
     };
     private static final String TAG = "XcLoggerBroadcastReceiver";
 
@@ -36,6 +39,10 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        // ==== VERSION MARKER v1.2.14-TARGETFIX ==== 
+        // TARGET_PACKAGES: com.xcheng.mdm, com.xcheng.xcloggertestdemo, com.xcheng.xclogger, com.ko.xclogger
+        // If you see this line in logcat, you have the FIXED version (compress callbacks work).
+        Log.d(TAG, "==== XCLOGGER v1.2.14-TARGETFIX ACTIVE | TARGET_PACKAGES: mdmdemo/common/pinelabs ====");
         if (intent == null || intent.getAction() == null) {
             return;
         }
@@ -86,7 +93,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         try {
             boolean shouldRun = resolveStartupState(context);
             if (shouldRun) {
-                handleControlRequest(context, buildControlIntent("start"));
+                LogServiceController.startLogService(context, "upgrade");
                 recordOperationHistory(context, "Service auto-started after boot");
             }
         } catch (Exception e) {
