@@ -21,7 +21,7 @@
     <string name="config_title">配置</string>
     <string name="btn_save_config">保存</string>
     <string name="warn_config_disabled">日志正在运行，已禁用配置修改</string>
-    <string name="hint_total_size">总容量 (GB)</string>
+    <string name="hint_total_size">总容量 (MB)</string>
     <string name="hint_file_size">单文件大小 (MB)</string>
     <string name="hint_buffer_size">缓冲区大小 (字节)</string>
     <string name="hint_log_dir">日志存储路径</string>

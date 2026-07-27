@@ -5,6 +5,7 @@ import android.content.res.XmlResourceParser;
 import android.util.Log;
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.filemanager.FileManager;
+import com.xcheng.xclogger.control.FilterConfigValidator;
 import com.xcheng.xclogger.control.PartialConfigMerger;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
@@ -14,13 +15,15 @@ import org.xmlpull.v1.XmlPullParserFactory;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * ConfigLoader - 配置加载器，负责从XML文件和数据库加载配置
  */
 public class ConfigLoader {
     private static final String TAG = "ConfigLoader";
-    private static final int APK_CONFIG_VERSION = 2;
+    private static final int APK_CONFIG_VERSION = 4;
 
     private static ConfigLoader instance;
     private XcLoggerConfig currentConfig;
@@ -140,11 +143,15 @@ public class ConfigLoader {
         return lastInitialAutoStartEnabled;
     }
 
-    public void updateConfig(Context context, XcLoggerConfig config) {
+    public boolean updateConfig(Context context, XcLoggerConfig config) {
         try {
+            FilterConfigValidator.validate(config);
             XcLoggerConfig oldConfig = this.currentConfig;
             XcLoggerDatabase db = new XcLoggerDatabase(context);
-            db.saveConfig(config);
+            if (!db.saveConfig(config)) {
+                Log.e(TAG, "Failed to commit config update");
+                return false;
+            }
             this.currentConfig = config;
             Log.i(TAG, "Config updated and saved to database");
             Log.i(TAG, "All components should refresh config from ConfigLoader");
@@ -155,8 +162,10 @@ public class ConfigLoader {
             } catch (Exception e) {
                 Log.w(TAG, "Failed to record operation history for updateConfig", e);
             }
+            return true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to update config", e);
+            return false;
         }
     }
 
@@ -216,6 +225,12 @@ public class ConfigLoader {
      */
     private static XcLoggerConfig parseConfigFromParser(XmlPullParser parser, boolean[] outAutoStart)
             throws XmlPullParserException, IOException {
+        return parseConfigFromParser(parser, outAutoStart, null);
+    }
+
+    private static XcLoggerConfig parseConfigFromParser(XmlPullParser parser, boolean[] outAutoStart,
+                                                        XmlValidation validation)
+            throws XmlPullParserException, IOException {
         XcLoggerConfig config = new XcLoggerConfig();
         boolean inFilteringRules = false;
 
@@ -223,55 +238,92 @@ public class ConfigLoader {
         while (eventType != XmlPullParser.END_DOCUMENT) {
             if (eventType == XmlPullParser.START_TAG) {
                 String tagName = parser.getName();
+                if (validation != null && parser.getDepth() == 1) {
+                    validation.rootName = tagName;
+                }
                 if ("filtering_rules".equals(tagName)) {
                     inFilteringRules = true;
                 } else if (inFilteringRules) {
                     switch (tagName) {
                         case "tag":
+                            markField(validation, tagName);
                             config.setFilterTag(parser.nextText());
                             break;
                         case "level":
+                            markField(validation, tagName);
                             config.setFilterLevel(parser.nextText());
                             break;
                         case "package_name":
+                            markField(validation, tagName);
                             config.setFilterPackage(parser.nextText());
+                            break;
+                        case "tag_blacklist":
+                        case "package_blacklist":
+                        case "level_blacklist":
+                        case "content":
+                        case "content_blacklist":
+                            markField(validation, tagName);
+                            String value = parser.nextText();
+                            if ("tag_blacklist".equals(tagName)) config.setFilterTagBlacklist(value);
+                            else if ("package_blacklist".equals(tagName)) config.setFilterPackageBlacklist(value);
+                            else if ("level_blacklist".equals(tagName)) config.setFilterLevelBlacklist(value);
+                            else if ("content".equals(tagName)) config.setFilterContent(value);
+                            else config.setFilterContentBlacklist(value);
+                            break;
+                        default:
+                            if (validation != null) validation.invalidStructure = true;
                             break;
                     }
                 } else {
                     switch (tagName) {
                         case "total_size":
+                            markField(validation, tagName);
                             config.setTotalSizeMb(Integer.parseInt(parser.nextText()));
                             break;
                         case "file_size":
+                            markField(validation, tagName);
                             config.setFileSizeMb(Integer.parseInt(parser.nextText()));
                             break;
                         case "buffer_size":
+                            markField(validation, tagName);
                             config.setBufferSizeBytes(Integer.parseInt(parser.nextText()));
                             break;
                         case "log_dir":
+                            markField(validation, tagName);
                             config.setLogDir(parser.nextText());
                             break;
                         case "log_period":
+                            markField(validation, tagName);
                             config.setLogPeriodHours(Integer.parseInt(parser.nextText()));
                             break;
                         case "tag_blacklist":
+                            markField(validation, tagName);
                             config.setFilterTagBlacklist(parser.nextText());
                             break;
                         case "package_blacklist":
+                            markField(validation, tagName);
                             config.setFilterPackageBlacklist(parser.nextText());
                             break;
                         case "level_blacklist":
+                            markField(validation, tagName);
                             config.setFilterLevelBlacklist(parser.nextText());
                             break;
                         case "content":
+                            markField(validation, tagName);
                             config.setFilterContent(parser.nextText());
                             break;
                         case "content_blacklist":
+                            markField(validation, tagName);
                             config.setFilterContentBlacklist(parser.nextText());
                             break;
                         default:
                             if (outAutoStart != null && "auto_start_enabled".equals(tagName)) {
                                 outAutoStart[0] = Boolean.parseBoolean(parser.nextText());
+                            } else if ("auto_start_enabled".equals(tagName)) {
+                                markField(validation, tagName);
+                                parser.nextText();
+                            } else if (validation != null) {
+                                validation.invalidStructure = true;
                             }
                             break;
                     }
@@ -351,7 +403,13 @@ public class ConfigLoader {
             XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
             parser.setInput(fis, "UTF-8");
 
-            XcLoggerConfig config = parseConfigFromParser(parser, null);
+            XmlValidation validation = new XmlValidation();
+            XcLoggerConfig config = parseConfigFromParser(parser, null, validation);
+            if (!validation.isValid() || !hasValidExternalValues(config, validation.fields)) {
+                Log.e(TAG, "Rejected XML config: invalid root, fields, or values");
+                return null;
+            }
+            FilterConfigValidator.validate(config);
 
             Log.i(TAG, "Config loaded from XML file: " + file.getAbsolutePath());
             return config;
@@ -384,6 +442,10 @@ public class ConfigLoader {
                 Log.e(TAG, "Failed to parse config file: " + filePath);
                 return false;
             }
+            if (hasUnsupportedImportFields(patch)) {
+                Log.e(TAG, "Config XML contains fields not supported by partial import");
+                return false;
+            }
 
             XcLoggerConfig current = this.currentConfig;
             if (current == null) {
@@ -410,8 +472,14 @@ public class ConfigLoader {
 
             // 无有效变更则跳过重启
             if ("no effective changes".equals(diff)) {
-                // 仍尝试删除文件（若存在则清理）
-                if (file.exists()) file.delete();
+                // 即使值相同也重新提交一次，只有持久化成功后才允许删除源文件。
+                if (!updateConfig(context, merged)) {
+                    Log.e(TAG, "Import config: persistence failed, keeping source file");
+                    return false;
+                }
+                if (!deleteImportedConfigFile(file, filePath)) {
+                    return false;
+                }
                 Log.i(TAG, "Import config: no effective changes, skipping restart");
                 return true;
             }
@@ -423,15 +491,25 @@ public class ConfigLoader {
                 LogServiceController.stopLogService(context, "import_config");
             }
 
-            updateConfig(context, merged);
+            if (!updateConfig(context, merged)) {
+                Log.e(TAG, "Import config: persistence failed, keeping source file");
+                if (wasRunning) {
+                    try {
+                        LogServiceController.startLogService(context, "import_config_restore");
+                    } catch (Exception restoreError) {
+                        Log.e(TAG, "Failed to restore service after import failure", restoreError);
+                    }
+                }
+                return false;
+            }
 
             if (wasRunning) {
                 LogServiceController.startLogService(context, "import_config");
             }
 
             // 关键操作全部成功后删除配置文件，防止重复导入
-            if (file.exists() && !file.delete()) {
-                Log.w(TAG, "Failed to delete config file after import: " + filePath);
+            if (!deleteImportedConfigFile(file, filePath)) {
+                return false;
             }
 
             Log.i(TAG, "Config imported from file: " + filePath + " (" + diff + ")");
@@ -443,6 +521,65 @@ public class ConfigLoader {
             } catch (Exception ignored) {
             }
             return false;
+        }
+    }
+
+    private boolean deleteImportedConfigFile(File file, String filePath) {
+        if (!file.exists()) {
+            return true;
+        }
+        if (!file.delete()) {
+            Log.w(TAG, "Failed to delete config file after import: " + filePath);
+            return false;
+        }
+        return true;
+    }
+
+    private static void markField(XmlValidation validation, String fieldName) {
+        if (validation != null) {
+            validation.fields.add(fieldName);
+        }
+    }
+
+    private static boolean hasValidExternalValues(XcLoggerConfig config, Set<String> fields) {
+        if (config == null) return false;
+        boolean hasConfigField = false;
+        String[] configFields = {"total_size", "file_size", "buffer_size", "log_dir", "log_period",
+                "tag", "level", "package_name"};
+        for (String field : configFields) {
+            if (fields.contains(field)) {
+                hasConfigField = true;
+                break;
+            }
+        }
+        if (!hasConfigField) return false;
+        if (fields.contains("total_size") && config.getTotalSizeMb() <= 0) return false;
+        if (fields.contains("file_size") && config.getFileSizeMb() <= 0) return false;
+        if (fields.contains("buffer_size") && config.getBufferSizeBytes() <= 0) return false;
+        if (fields.contains("log_period") && config.getLogPeriodHours() <= 0) return false;
+        if (fields.contains("log_dir") && (config.getLogDir() == null || config.getLogDir().trim().isEmpty())) return false;
+        return true;
+    }
+
+    private static boolean hasUnsupportedImportFields(XcLoggerConfig config) {
+        return !isEmpty(config.getFilterTagBlacklist())
+                || !isEmpty(config.getFilterPackageBlacklist())
+                || !isEmpty(config.getFilterLevelBlacklist())
+                || !isEmpty(config.getFilterContent())
+                || !isEmpty(config.getFilterContentBlacklist());
+    }
+
+    private static boolean isEmpty(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static class XmlValidation {
+        String rootName;
+        boolean invalidStructure;
+        final Set<String> fields = new HashSet<>();
+
+        boolean isValid() {
+            return "XcLoggerConfig".equals(rootName) && !invalidStructure && !fields.isEmpty();
         }
     }
 

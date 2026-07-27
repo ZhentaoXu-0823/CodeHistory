@@ -22,9 +22,9 @@ interface IXcLoggerService {
     String getCompressStatus();
     boolean cancelCompressTask();
 
-    ParcelFileDescriptor getLogZip();
-
     // 监听器注册
     void registerListener(IXcLoggerListener listener);
     void unregisterListener(IXcLoggerListener listener);
+
+    ParcelFileDescriptor getLogZip();
 }

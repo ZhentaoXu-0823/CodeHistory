@@ -21,7 +21,7 @@
     <string name="config_title">Конфиг</string>
     <string name="btn_save_config">СОХРАНИТЬ</string>
     <string name="warn_config_disabled">Лог запущен, изменение конфигурации отключено</string>
-    <string name="hint_total_size">Общий размер в ГБ</string>
+    <string name="hint_total_size">Общий размер в МБ</string>
     <string name="hint_file_size">Размер файла в МБ</string>
     <string name="hint_buffer_size">Размер буфера в байтах</string>
     <string name="hint_log_dir">Путь к директории логов</string>

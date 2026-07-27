@@ -114,7 +114,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         try {
             boolean shouldRun = resolveStartupState(context);
             if (shouldRun) {
-                handleControlRequest(context, buildControlIntent("start"));
+                LogServiceController.startLogService(context, "upgrade");
                 recordOperationHistory(context, "Service restarted after app update");
             }
         } catch (Exception e) {
