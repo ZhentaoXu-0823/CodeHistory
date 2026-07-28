@@ -1,6 +1,6 @@
 {
   "_maintenance_guide": {
-    "version": "1.5",
+    "version": "2.1",
     "description": "XCLogger2 任务跟踪清单。维护规则如下：",
     "rules": [
       "A. 每个任务必须包含 title(标题)、created(创建时间)、category(分类) 三个必填字段",
@@ -66,25 +66,6 @@
           "XML 根节点必须为 XcLoggerConfig，拒绝非法 XML",
           "仅解析成功 + DB 写入成功后才 delete 源文件",
           "移除 no effective changes 分支中当前无条件的 delete"
-        ]
-      },
-      "result": null
-    },
-    {
-      "title": "漏洞8：压缩时间参数路径穿越 + 单边 endTime NPE",
-      "created": "2026-07-23",
-      "category": "confirmed",
-      "risk": "高",
-      "summary": "normalizeTimestamp() 不足14位数字时原样返回含 ../ 的输入；仅传 endTime 时 buildRangeZipName 用 null 导致 NPE。",
-      "plan": {
-        "files": [
-          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\filemanager\\FileCompressService.java"
-        ],
-        "changes": [
-          "范围压缩必须同时提供 startTime 和 endTime，精确匹配 yyyyMMddHHmmss 14位数字",
-          "使用 DateFormat 校验真实日月时分秒，且 startTime <= endTime",
-          "创建 ZIP 前 canonical path 检查确保候选路径在 OUT 目录内",
-          "非法输入直接返回失败，不使用当前时间 fallback"
         ]
       },
       "result": null
@@ -172,6 +153,32 @@
       "summary": "提交 d0d2aa1 的说明中 'handleMyPackageReplaced 直调 startLogService' 有误——实际直调的是 handleBootCompleted (第96行)。handleMyPackageReplaced (第117行) 仍走异步控制链。代码逻辑无问题，仅提交说明错误。此条记录供参考，不需要代码修改。",
       "plan": null,
       "result": null
+    },
+    {
+      "title": "漏洞8：压缩时间参数路径穿越 + 单边 endTime NPE",
+      "created": "2026-07-23",
+      "category": "completed",
+      "risk": "高",
+      "summary": "normalizeTimestamp() 不足14位数字时原样返回含 ../ 的输入；仅传 endTime 时 buildRangeZipName 用 null 导致 NPE。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\filemanager\\FileCompressService.java"
+        ],
+        "changes": [
+          "范围压缩必须同时提供 startTime 和 endTime，精确匹配 yyyyMMddHHmmss 14位数字",
+          "使用 DateFormat 校验真实日月时分秒，且 startTime <= endTime",
+          "创建 ZIP 前 canonical path 检查确保候选路径在 OUT 目录内",
+          "非法输入直接返回失败，不使用当前时间 fallback"
+        ]
+      },
+      "result": {
+        "commit_hash": "fac186b",
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\filemanager\\FileCompressService.java"
+        ],
+        "logic": "修复内容见 plan.changes",
+        "git_committed": true
+      }
     },
     {
       "title": "修复：handleMyPackageReplaced 改为直调 startLogService",
