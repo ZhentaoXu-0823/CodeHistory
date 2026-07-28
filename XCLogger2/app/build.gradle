@@ -112,6 +112,6 @@ afterEvaluate {
 
     // Build APK(s): select 'commonDebug' variant to build ALL flavor APKs
     tasks.named('assembleCommonDebug').configure {
-        dependsOn 'assembleP1416TPinelabsDebug'
+        dependsOn 'assembleP1416TPinelabsDebug', 'assembleR2351ComboDebug'
     }
 }
