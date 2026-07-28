@@ -1,6 +1,6 @@
 {
   "_maintenance_guide": {
-    "version": "2.1",
+    "version": "2.2",
     "description": "XCLogger2 任务跟踪清单。维护规则如下：",
     "rules": [
       "A. 每个任务必须包含 title(标题)、created(创建时间)、category(分类) 三个必填字段",
