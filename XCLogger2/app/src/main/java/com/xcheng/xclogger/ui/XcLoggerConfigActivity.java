@@ -207,7 +207,9 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             newConfig.setFilterContent(etFilterContent.getText().toString().trim());
             newConfig.setFilterContentBlacklist(etFilterContentBlacklist.getText().toString().trim());
 
-            ConfigLoader.getInstance().updateConfig(this, newConfig);
+            if (!ConfigLoader.getInstance().updateConfig(this, newConfig)) {
+                throw new IllegalStateException("configuration was rejected or could not be persisted");
+            }
             processController.getFileManager().updatePaths();
 
             Toast.makeText(this, R.string.msg_config_save_success, Toast.LENGTH_SHORT).show();

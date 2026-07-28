@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XcLoggerConfig xmlns:android="http://schemas.android.com/apk/res/android">
+
+<!--  Total size （MB） - 1GB -->
+    <total_size>1024</total_size>
+
+<!--  Log file max size （MB）  -->
+    <file_size>4</file_size>
+
+<!--  Buffer size （byte）  -->
+    <buffer_size>4096</buffer_size>
+
+<!--  Log directory path  -->
+    <log_dir>/storage/emulated/0/XcLogger</log_dir>
+
+<!--  Log coverage period (Hour) - 4 days  -->
+    <log_period>96</log_period>
+
+<!--  Initial auto start after default config is imported for the first time  -->
+    <auto_start_enabled>true</auto_start_enabled>
+
+<!--  Filtering rules  -->
+    <filtering_rules>
+        <!-- all-No filtering -->
+        <tag>all</tag>
+        <!-- all-No filtering, D, V, W, E (levels name separated by ,)-->
+        <level>all</level>
+        <!-- all-No filtering -->
+        <package_name>all</package_name>
+
+        <!-- Blacklist (optional): elements to exclude from whitelist results -->
+        <tag_blacklist></tag_blacklist>
+        <package_blacklist></package_blacklist>
+        <level_blacklist></level_blacklist>
+
+        <!-- Content filter (optional): keyword-based whitelist/blacklist -->
+        <content></content>
+        <content_blacklist></content_blacklist>
+    </filtering_rules>
+
+</XcLoggerConfig>

@@ -47,16 +47,19 @@ public class XcLoggerDatabase {
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    public void saveConfig(XcLoggerConfig config) {
+    public boolean saveConfig(XcLoggerConfig config) {
         try {
             SharedPreferences.Editor editor = prefs.edit();
             putConfig(editor, config);
-            if (!editor.commit()) {
+            boolean success = editor.commit();
+            if (!success) {
                 Log.w(TAG, "Config commit returned false");
             }
-            Log.i(TAG, "Config saved to database");
+            Log.i(TAG, "Config saved to database: success=" + success);
+            return success;
         } catch (Exception e) {
             Log.e(TAG, "Failed to save config", e);
+            return false;
         }
     }
 

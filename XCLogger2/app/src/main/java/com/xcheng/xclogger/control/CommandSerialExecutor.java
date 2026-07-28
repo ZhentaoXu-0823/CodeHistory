@@ -99,13 +99,16 @@ public class CommandSerialExecutor {
         XcLoggerConfig current = ConfigLoader.getInstance().getCurrentConfig();
         if (current == null) current = ConfigLoader.getInstance().load(context);
         XcLoggerConfig merged = configMerger.merge(current, request.getConfigPatch());
+        FilterConfigValidator.validate(merged);
         ProcessController controller = ProcessController.getInstance(context);
         if (controller != null) {
             controller.recordOperationHistory("Config update diff: " + buildConfigDiff(current, merged));
         }
         boolean wasRunning = db.loadRunningState();
         if (wasRunning) LogServiceController.stopLogService(context, request.getChannel() + ":" + request.getResolvedSource() + ":update_config_stop");
-        ConfigLoader.getInstance().updateConfig(context, merged);
+        if (!ConfigLoader.getInstance().updateConfig(context, merged)) {
+            throw new IllegalStateException("config persistence failed");
+        }
         if (wasRunning) LogServiceController.startLogService(context, request.getChannel() + ":" + request.getResolvedSource() + ":update_config_start");
     }
 

@@ -13,7 +13,7 @@ android {
         minSdk 29
         targetSdk 33
         versionCode 8
-        versionName "1.2.14"
+        versionName "1.2.15"
     }
 
     buildTypes {
@@ -54,6 +54,12 @@ android {
             applicationId keystoreConfigs.p1416TPinelabs.applicationId
             resValue "string", "flavor_config", "p1416t_pinelabs_default_config"
             signingConfig keystoreConfigs.p1416TPinelabs.storePath ? signingConfigs.p1416TPinelabs : null
+        }
+        r2351Combo {
+            dimension "customer"
+            applicationId keystoreConfigs.r2351Combo.applicationId
+            resValue "string", "flavor_config", "r2351_combo_default_config"
+            signingConfig keystoreConfigs.r2351Combo.storePath ? signingConfigs.r2351Combo : null
         }
         common {
             dimension "customer"
