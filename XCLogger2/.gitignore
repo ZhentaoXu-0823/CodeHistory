@@ -17,3 +17,6 @@ local.properties
 keys/
 !keys/.gitkeep
 /to-do-list.json
+/keystore.gradle
+/ARCHITECTURE.md
+/INTEGRATION.md
