@@ -78,9 +78,9 @@
       "summary": "新增 XcLoggerConfigUpdater 放在 xclogger-api，13字段链式setter+commit()，复用updateConfigurationPartial。",
       "plan": {
         "files": [
-          "D:\\\\GitHubRepositories\\\\XCLogger2\\\\xclogger-api\\\\src\\\\main\\\\java\\\\com\\\\xcheng\\\\xclogger\\\\util\\\\XcLoggerConfigUpdater.java",
-          "D:\\\\GitHubRepositories\\\\XCLoggerTestDemo\\\\app\\\\src\\\\main\\\\java\\\\com\\\\xcheng\\\\xcloggertestdemo\\\\XcLoggerClient.java",
-          "D:\\\\GitHubRepositories\\\\XCLoggerTestDemo\\\\app\\\\src\\\\main\\\\java\\\\com\\\\xcheng\\\\xcloggertestdemo\\\\ConfigFragment.java"
+          "D:\\GitHubRepositories\\XCLogger2\\xclogger-api\\src\\main\\java\\com\\xcheng\\xclogger\\util\\XcLoggerConfigUpdater.java",
+          "D:\\GitHubRepositories\\XCLoggerTestDemo\\app\\src\\main\\java\\com\\xcheng\\xcloggertestdemo\\XcLoggerClient.java",
+          "D:\\GitHubRepositories\\XCLoggerTestDemo\\app\\src\\main\\java\\com\\xcheng\\xcloggertestdemo\\ConfigFragment.java"
         ],
         "changes": [
           "XcLoggerConfigUpdater(新建,~150行): mSnapshot+mSealed, 8set(覆盖值)+2add(幂等追加)+2del(幂等删除)+2commit(同步/异步), 每个setter即时校验, add(all->替换), commit后不可复用",
