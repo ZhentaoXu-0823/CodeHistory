@@ -1,0 +1,270 @@
+{
+  "_maintenance_guide": {
+    "version": "1.5",
+    "description": "XCLogger2 任务跟踪清单。维护规则如下：",
+    "rules": [
+      "A. 每个任务必须包含 title(标题)、created(创建时间)、category(分类) 三个必填字段",
+      "B. 任务按分类排序：确认 → 待定 → 忽略 → 已完成。同一分类内按 created 从旧到新",
+      "C. 确认(confirmed)：需要完成的任务。待定(pending)：不确定是否需要修改。忽略(ignored)：记录但不修改",
+      "D. 确认的任务必须包含 plan 字段：files(需修改文件绝对路径) + changes(对应修改内容描述)",
+      "E. 确认任务的完成流程：先参考 plan → 真实执行修改 → 完成后将实际过程记录到 result 字段",
+      "F. 任务完成后 category 改为 completed(已完成)，并按规则B重新排序到已完成分类末尾",
+      "G. 任务的 summary、plan、result 和日志示例不得记录真实口令、密钥或其他敏感值"
+    ]
+  },
+  "tasks": [
+    {
+      "title": "漏洞4：filterTag/filterLevel 命令注入 → system 权限任意命令执行",
+      "created": "2026-07-23",
+      "category": "confirmed",
+      "risk": "严重",
+      "summary": "buildTagFilterCommand() 将外部可控的 filterTag/filterLevel 仅做 trim() 即原样拼入 sh -c logcat 命令。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\recorder\\SystemLogCatcher.java"
+        ],
+        "changes": [
+          "新增 FilterConfigValidator 统一校验外部 filterTag/filterLevel",
+          "移除 sh -c 调用，改用 Runtime.exec/ProcessBuilder 参数数组直接执行 logcat",
+          "filterTag/filterLevel 仅允许 [a-zA-Z0-9_.-] 字符"
+        ]
+      },
+      "result": null
+    },
+    {
+      "title": "漏洞1：keystore.gradle 口令明文泄露 + git 历史可追溯",
+      "created": "2026-07-23",
+      "category": "confirmed",
+      "risk": "高",
+      "summary": "PineLabs 签名 keystore 口令曾以明文提交至公开仓库。jks 文件未泄露但 git 历史需净化。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\keystore.gradle",
+          "D:\\GitHubRepositories\\XCLogger2\\.gitignore"
+        ],
+        "changes": [
+          "【仅服务器清理】本地 keystore.gradle 不修改。仅清理 GitHub 远程仓库中的口令记录",
+          "git filter-repo --path XCLogger2/keystore.gradle --replace-text <(echo 'Kozen2022==>REMOVED')",
+          "git push --force --all + --tags 覆盖远程",
+          "通知所有协作者重新 clone"
+        ]
+      },
+      "result": null
+    },
+    {
+      "title": "漏洞6：import_config 路径零校验 → 任意文件删除",
+      "created": "2026-07-23",
+      "category": "confirmed",
+      "risk": "高",
+      "summary": "ConfigLoader.importFromXmlFile() 中 filePath 无路径校验，解析后无条件和失败时均 delete()。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\processctr\\ConfigLoader.java"
+        ],
+        "changes": [
+          "canonical path 校验目录边界，限制在允许的导入目录内",
+          "XML 根节点必须为 XcLoggerConfig，拒绝非法 XML",
+          "仅解析成功 + DB 写入成功后才 delete 源文件",
+          "移除 no effective changes 分支中当前无条件的 delete"
+        ]
+      },
+      "result": null
+    },
+    {
+      "title": "漏洞8：压缩时间参数路径穿越 + 单边 endTime NPE",
+      "created": "2026-07-23",
+      "category": "confirmed",
+      "risk": "高",
+      "summary": "normalizeTimestamp() 不足14位数字时原样返回含 ../ 的输入；仅传 endTime 时 buildRangeZipName 用 null 导致 NPE。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\filemanager\\FileCompressService.java"
+        ],
+        "changes": [
+          "范围压缩必须同时提供 startTime 和 endTime，精确匹配 yyyyMMddHHmmss 14位数字",
+          "使用 DateFormat 校验真实日月时分秒，且 startTime <= endTime",
+          "创建 ZIP 前 canonical path 检查确保候选路径在 OUT 目录内",
+          "非法输入直接返回失败，不使用当前时间 fallback"
+        ]
+      },
+      "result": null
+    },
+    {
+      "title": "实现链式配置更新器 XcLoggerConfigUpdater",
+      "created": "2026-07-28",
+      "category": "confirmed",
+      "risk": "低",
+      "summary": "新增 XcLoggerConfigUpdater 放在 xclogger-api，13字段链式setter+commit()，复用updateConfigurationPartial。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\xclogger-api\\src\\main\\java\\com\\xcheng\\xclogger\\util\\XcLoggerConfigUpdater.java",
+          "D:\\GitHubRepositories\\XCLoggerTestDemo\\app\\src\\main\\java\\com\\xcheng\\xcloggertestdemo\\XcLoggerClient.java",
+          "D:\\GitHubRepositories\\XCLoggerTestDemo\\app\\src\\main\\java\\com\\xcheng\\xcloggertestdemo\\ConfigTestActivity.java"
+        ],
+        "changes": [
+          "新建 XcLoggerConfigUpdater 放在 xclogger-api 模块，13字段+3组操作方法",
+          "【set方法-8个】 totalSizeMb/fileSizeMb/bufferSizeBytes/logDir/logPeriodHours/tag/package/level — 覆盖值",
+          "【add方法-2个】 addTag(v)/addPackage(v) — 追加逗号分隔值，已存在时跳过（幂等），当前值为'all'时替换为指定值",
+          "【del方法-2个】 delTag(v)/delPackage(v) — 从逗号列表删除指定值，不存在时无操作（幂等）",
+          "【level特殊】仅 set 方法，level 是全局单值（logcat 级别 F/E/W/I/D/V, 不支持复合级别），设置 W 保留 W+E+F",
+          "【终端方法-2个】 commit() 同步返回 boolean，commit(callback) 异步通过 ResultCallback 回调 onResult(ok,msg)",
+          "【校验】每个 setter 即时校验：tag/package 仅允许 [a-zA-Z0-9_,.*-]，level 仅允许 [FEWIDVfewidvall] 或 'all'",
+          "【一次性快照】commit 前不 touch 全局状态，commit 后 Updater 失效，重复 commit 抛 IllegalStateException",
+          "XcLoggerClient 新增 configUpdater() 工厂方法（一行 return new Updater(service)）",
+          "ConfigTestActivity APPLY 按钮改为链式调用：client.configUpdater().tag(x).level(y).package(z).commit()"
+        ]
+      },
+      "result": null
+    },
+    {
+      "title": "漏洞2：AIDL 服务 13 个方法完全无调用方鉴权",
+      "created": "2026-07-23",
+      "category": "pending",
+      "risk": "高",
+      "summary": "RemoteBindService AidlBinder 中所有方法无 checkCallingPermission/Binder.getCallingUid/签名校验。SourceWhitelistGuard 已定义但全库零调用。",
+      "reason": "Manifest 中服务 exported 且未声明调用权限。实际可利用性需结合设备环境验证，暂列待定。"
+    },
+    {
+      "title": "漏洞3：广播控制通道无鉴权",
+      "created": "2026-07-23",
+      "category": "pending",
+      "risk": "高",
+      "summary": "任意 App 发送 CTRL_REQUEST 广播即可执行全部 op_type。遗留 ADB_CMD 通道同样无鉴权。",
+      "reason": "广播接收器已配 IntentFilter。当前设备上实际可访问性待验证，暂列待定。"
+    },
+    {
+      "title": "漏洞5：getLogZip() 无鉴权窃取全系统日志",
+      "created": "2026-07-23",
+      "category": "pending",
+      "risk": "高",
+      "summary": "getLogZip() 仅有业务状态校验，无调用方鉴权。与漏洞2同根因。",
+      "reason": "ZIP 路径受 SELinux 保护，但 AIDL pipe 可绕过。待漏洞2一并评估。"
+    },
+    {
+      "title": "漏洞7：log_dir 零校验 → system uid 任意目录写/删",
+      "created": "2026-07-23",
+      "category": "pending",
+      "risk": "高",
+      "summary": "config.getLogDir() 直接用于 File 构造，无路径白名单。",
+      "reason": "攻击需先绕过漏洞2/3才可触发此漏洞。修复优先级低于入口鉴权。"
+    },
+    {
+      "title": "漏洞9：XOR 伪加密",
+      "created": "2026-07-23",
+      "category": "pending",
+      "risk": "中",
+      "summary": "XOR 加密，keystream 明文写文件头并循环复用，无标准密钥派生。",
+      "reason": "XOR 加密为可选功能，默认不开启。系统日志非高密级数据。"
+    },
+    {
+      "title": "漏洞10：开发者入口使用固定四位口令",
+      "created": "2026-07-23",
+      "category": "pending",
+      "risk": "低",
+      "summary": "开发者入口仅需固定 4 位数字口令，无失败锁定/延迟。",
+      "reason": "为开发者调试入口，出厂后不保留。进入需先打开隐藏 MainActivity。"
+    },
+    {
+      "title": "记录：d0d2aa1 提交说明有误 (handleBootCompleted ≠ handleMyPackageReplaced)",
+      "created": "2026-07-23",
+      "category": "ignored",
+      "risk": "无",
+      "summary": "提交 d0d2aa1 的说明中 'handleMyPackageReplaced 直调 startLogService' 有误——实际直调的是 handleBootCompleted (第96行)。handleMyPackageReplaced (第117行) 仍走异步控制链。代码逻辑无问题，仅提交说明错误。此条记录供参考，不需要代码修改。",
+      "plan": null,
+      "result": null
+    },
+    {
+      "title": "修复：handleMyPackageReplaced 改为直调 startLogService",
+      "created": "2026-07-23",
+      "category": "completed",
+      "risk": "中",
+      "summary": "当前 handleMyPackageReplaced() 走 handleControlRequest(buildControlIntent(\"start\")) 异步链，与 PMS startForegroundService 几乎同时触发时可能导致双文件。handleBootCompleted() 已正确直调，需统一。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\receiver\\XcLoggerBroadcastReceiver.java"
+        ],
+        "changes": [
+          "handleMyPackageReplaced() 第117行: handleControlRequest(context, buildControlIntent(\"start\")) → LogServiceController.startLogService(context, \"upgrade\")",
+          "与 handleBootCompleted() 第96行保持一致模式"
+        ]
+      },
+      "result": {
+        "modified_files": [],
+        "logic": "已在 commit a43742c 中完成并推送",
+        "git_committed": true,
+        "commit_hash": "a43742c"
+      }
+    },
+    {
+      "title": "修复：中文/俄文 strings.xml 总容量单位 GB→MB",
+      "created": "2026-07-23",
+      "category": "completed",
+      "risk": "低",
+      "summary": "totalSize 字段已改为 MB 单位，但中文 strings.xml 仍显示'总容量 (GB)'，俄文显示'Общий размер в ГБ'，英文已修正为'Total size in MB'。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\res\\values-zh-rCN\\string.xml",
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\res\\values-ru\\strings.xml"
+        ],
+        "changes": [
+          "中文 string.xml:24 '总容量 (GB)' → '总容量 (MB)'",
+          "俄文 strings.xml:24 'Общий размер в ГБ' → 'Общий размер в МБ'"
+        ]
+      },
+      "result": {
+        "modified_files": [],
+        "logic": "已在 commit a43742c 中完成并推送",
+        "git_committed": true,
+        "commit_hash": "a43742c"
+      }
+    },
+    {
+      "title": "修复：AIDL getLogZip() 移到接口末尾避免 transaction code 错位",
+      "created": "2026-07-23",
+      "category": "completed",
+      "risk": "高",
+      "summary": "IXcLoggerService.aidl 中 getLogZip() (第25行) 插入在 registerListener() (第28行) 之前，改变了后续方法的 AIDL transaction code，旧 AAR 客户端调用 registerListener 会错误触发 getLogZip。新增方法必须追加到接口末尾。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\aidl\\com\\xcheng\\xclogger\\service\\IXcLoggerService.aidl",
+          "D:\\GitHubRepositories\\XCLogger2\\xclogger-api\\src\\main\\aidl\\com\\xcheng\\xclogger\\service\\IXcLoggerService.aidl"
+        ],
+        "changes": [
+          "将 getLogZip() 从第25行移到接口最后一行（unregisterListener 之后）",
+          "app 端和 xclogger-api 端必须同步修改",
+          "重新编译 AAR (:xclogger-api:assembleRelease) 并通知所有外部接入方更新 AAR"
+        ]
+      },
+      "result": {
+        "modified_files": [],
+        "logic": "已在 commit a43742c 中完成并推送",
+        "git_committed": true,
+        "commit_hash": "a43742c"
+      }
+    },
+    {
+      "title": "修复：SharedPreferences 旧值 GB→MB 升级迁移",
+      "created": "2026-07-23",
+      "category": "completed",
+      "risk": "高",
+      "summary": "SharedPreferences 键名 total_size 未变，APK_CONFIG_VERSION 一直是 2。已升级设备中 SP 存储的旧值 4 (GB) 会被直接解释为 4 (MB)，导致总空间上限从 4096 MB 骤降为 4 MB，日志大量丢失。",
+      "plan": {
+        "files": [
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\processctr\\ConfigLoader.java",
+          "D:\\GitHubRepositories\\XCLogger2\\app\\src\\main\\java\\com\\xcheng\\xclogger\\util\\DatabaseMigration.java"
+        ],
+        "changes": [
+          "APK_CONFIG_VERSION 从 2 递增到 3",
+          "DatabaseMigration 新增 migrateV2ToV3()：检测 total_size 值 < 100 → 乘以 1024 (GB→MB 迁移)",
+          "ConfigLoader.load() 首次加载时触发迁移"
+        ]
+      },
+      "result": {
+        "modified_files": [],
+        "logic": "已在 commit a43742c 中完成并推送",
+        "git_committed": true,
+        "commit_hash": "a43742c"
+      }
+    }
+  ]
+}
