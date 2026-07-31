@@ -22,7 +22,7 @@ public class FileCompressService extends Service {
     public static final String ACTION_CTRL_RESULT = "com.xcheng.xclogger.CTRL_RESULT";
     public static final String STATE_IDLE = "IDLE", STATE_COMPRESSING = "COMPRESSING", STATE_WAIT_UPLOAD_RESULT = "WAIT_UPLOAD_RESULT", STATE_CANCELLING = "CANCELLING";
     public static final String EXTRA_ZIP_FILES = "zip_files", EXTRA_RETRY_COUNT = "retry_count", EXTRA_MAX_RETRY_COUNT = "max_retry_count", EXTRA_COMPRESS_STATE = "compress_state";
-    private static final String OUT = FileManager.COMPRESS_OUTPUT_DIR, PARENT = FileManager.COMPRESS_PARENT_DIR, LOG_PREFIX = "mainlog_", H_PREFIX = "A_OperationHistory_", H_NAME = "A_OperationHistory.txt";
+    private static final String OUT = FileManager.COMPRESS_OUTPUT_DIR, PARENT = FileManager.COMPRESS_PARENT_DIR, LOG_PREFIX = "mainlog_", H_PREFIX = "A_OperationHistory_";
     private static final int MAX_RETRY = 3;
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static final SecureRandom RAND = new SecureRandom();
@@ -209,7 +209,6 @@ public class FileCompressService extends Service {
             List<File> out = new ArrayList<>();
             out.add(z);
             hist(this, "Compressed range to " + z.getAbsolutePath() + ", file_count=" + snap.size());
-            copyHistory(new File(OUT));
             return out;
         }
 
@@ -236,7 +235,6 @@ public class FileCompressService extends Service {
             out.add(z);
             hist(this, "Compressed log date " + d + " to " + z.getAbsolutePath() + ", file_count=" + map.get(d).size());
         }
-        copyHistory(new File(OUT));
         return out;
     }
 
@@ -280,37 +278,46 @@ public class FileCompressService extends Service {
     }
 
     private void zip(File z, List<File> fs) throws Exception {
+        File historySnapshot = null;
         try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(z)))) {
             byte[] b = new byte[8192];
             for (File f : fs) {
                 cancelCheck();
-                try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(f))) {
-                    zos.putNextEntry(new ZipEntry(f.getName()));
-                    int n;
-                    while ((n = in.read(b)) != -1) {
-                        cancelCheck();
-                        zos.write(b, 0, n);
-                    }
-                    zos.closeEntry();
-                }
+                writeZipEntry(zos, f, f.getName(), b, true);
+            }
+
+            hist(this, "Log entries compressed, snapshotting operation history for ZIP: "
+                    + z.getName());
+            FileManager fileManager = resolveFileManager();
+            historySnapshot = File.createTempFile("xclogger_operation_history_", ".tmp", getCacheDir());
+            fileManager.snapshotOperationHistory(historySnapshot);
+            String historyEntryName = H_PREFIX
+                    + new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(new Date())
+                    + ".txt";
+            writeZipEntry(zos, historySnapshot, historyEntryName, b, false);
+        } finally {
+            if (historySnapshot != null && historySnapshot.exists() && !historySnapshot.delete()) {
+                Log.w("FileCompressService", "delete history snapshot failed: " + historySnapshot);
             }
         }
     }
 
-    private void copyHistory(File out) {
-        try {
-            XcLoggerDatabase db = new XcLoggerDatabase(this);
-            File src = new File(db.getOperationHistoryPath(), H_NAME);
-            if (!src.exists()) return;
-            File dst = new File(out, H_PREFIX + new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(new Date()) + ".txt");
-            try (FileInputStream in = new FileInputStream(src); FileOutputStream os = new FileOutputStream(dst)) {
-                byte[] b = new byte[8192];
-                int n;
-                while ((n = in.read(b)) != -1) os.write(b, 0, n);
+    private FileManager resolveFileManager() {
+        ProcessController controller = ProcessController.getInstance(this);
+        return controller != null && controller.getFileManager() != null
+                ? controller.getFileManager() : new FileManager(this);
+    }
+
+    private void writeZipEntry(ZipOutputStream zos, File source, String entryName,
+                               byte[] buffer, boolean checkCancellation) throws Exception {
+        try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(source))) {
+            zos.putNextEntry(new ZipEntry(entryName));
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                if (checkCancellation) cancelCheck();
+                zos.write(buffer, 0, n);
             }
-            perm(dst);
-        } catch (Exception e) {
-            Log.e("FileCompressService", "copy history failed", e);
+            zos.closeEntry();
         }
     }
 

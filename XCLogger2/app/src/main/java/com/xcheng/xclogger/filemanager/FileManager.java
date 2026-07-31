@@ -7,6 +7,8 @@ import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 import java.io.File;
+import java.io.EOFException;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.ParseException;
@@ -28,6 +30,7 @@ public class FileManager {
     private static final String LOG_FILE_PREFIX = "mainlog_";
     private static final String LOG_FILE_EXTENSION = ".txt";
     private static final String OPERATION_HISTORY_FILE = "A_OperationHistory.txt";
+    private static final Object OPERATION_HISTORY_LOCK = new Object();
     private static final long MIN_FILE_LIFETIME_MS = 10 * 1000;
 
     private static final String DEFAULT_OPERATION_HISTORY_PATH = "/storage/emulated/0/XcLogger";
@@ -394,35 +397,77 @@ public class FileManager {
     // ... existing code ... (保留所有其他现有方法，不变)
 
     public void appendOperationHistory(String operation) {
-        try {
-            if (operationHistoryFile == null) {
-                initOperationHistoryDir();
-            }
+        synchronized (OPERATION_HISTORY_LOCK) {
+            try {
+                if (operationHistoryFile == null) {
+                    initOperationHistoryDir();
+                }
 
-            if (operationHistoryFile != null && operationHistoryFile.getParentFile() != null) {
-                if (!operationHistoryFile.getParentFile().exists()) {
-                    boolean created = operationHistoryFile.getParentFile().mkdirs();
-                    if (!created) {
-                        Log.e(TAG, "Failed to create operation history directory: " + operationHistoryFile.getParentFile().getAbsolutePath());
-                        return;
+                if (operationHistoryFile != null && operationHistoryFile.getParentFile() != null) {
+                    if (!operationHistoryFile.getParentFile().exists()) {
+                        boolean created = operationHistoryFile.getParentFile().mkdirs();
+                        if (!created) {
+                            Log.e(TAG, "Failed to create operation history directory: " + operationHistoryFile.getParentFile().getAbsolutePath());
+                            return;
+                        }
                     }
-                }
 
-                String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
-                String logEntry = "[" + timestamp + "] " + operation + "\n";
+                    String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+                    String logEntry = "[" + timestamp + "] " + operation + "\n";
 
-                try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
-                    fos.write(logEntry.getBytes());
-                    fos.flush();
+                    try (FileOutputStream fos = new FileOutputStream(operationHistoryFile, true)) {
+                        fos.write(logEntry.getBytes());
+                        fos.flush();
+                    }
+                } else {
+                    Log.e(TAG, "Invalid operation history file path");
                 }
-            } else {
-                Log.e(TAG, "Invalid operation history file path");
+            } catch (IOException e) {
+                Log.e(TAG, "Error writing operation history", e);
+            } catch (Exception e) {
+                Log.e(TAG, "Unexpected error writing operation history", e);
             }
-        } catch (IOException e) {
-            Log.e(TAG, "Error writing operation history", e);
-        } catch (Exception e) {
-            Log.e(TAG, "Unexpected error writing operation history", e);
         }
+    }
+
+    /** Copies a stable prefix of the append-only operation history into a temporary snapshot. */
+    public File snapshotOperationHistory(File snapshotFile) throws IOException {
+        if (snapshotFile == null) throw new IllegalArgumentException("snapshotFile is null");
+
+        File source;
+        long snapshotLength;
+        synchronized (OPERATION_HISTORY_LOCK) {
+            if (operationHistoryFile == null) initOperationHistoryDir();
+            source = operationHistoryFile;
+            if (source == null || !source.isFile()) {
+                throw new IOException("Operation history file is unavailable");
+            }
+            snapshotLength = source.length();
+        }
+
+        File parent = snapshotFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Failed to create operation history snapshot directory");
+        }
+
+        try (FileInputStream in = new FileInputStream(source);
+             FileOutputStream out = new FileOutputStream(snapshotFile, false)) {
+            byte[] buffer = new byte[8192];
+            long remaining = snapshotLength;
+            while (remaining > 0) {
+                int read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                if (read < 0) throw new EOFException("Operation history changed during snapshot");
+                out.write(buffer, 0, read);
+                remaining -= read;
+            }
+            out.flush();
+        } catch (IOException e) {
+            if (snapshotFile.exists() && !snapshotFile.delete()) {
+                Log.w(TAG, "Failed to delete incomplete operation history snapshot: " + snapshotFile);
+            }
+            throw e;
+        }
+        return snapshotFile;
     }
 
     public void appendConfigChangeHistory(String configDetails) {
