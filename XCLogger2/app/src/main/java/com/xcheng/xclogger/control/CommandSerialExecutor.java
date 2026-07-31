@@ -6,9 +6,9 @@ import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
+import com.xcheng.xclogger.util.XcLoggerConfig2;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerConfigUpdate;
-import com.xcheng.xclogger.util.XcLoggerConfigUpdateV3;
 import com.xcheng.xclogger.util.XcLoggerConfigUpdateResult;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 import java.util.Objects;
@@ -27,33 +27,19 @@ public class CommandSerialExecutor {
     public static synchronized CommandSerialExecutor getInstance() { if (instance == null) instance = new CommandSerialExecutor(); return instance; }
     public void submit(Context context, ControlRequest request, ResultCallback callback) { singleExecutor.execute(() -> { ControlResult result = executeInternal(context, request); if (callback != null) callback.onResult(result); }); }
 
-    public void submitConfigurationUpdate(Context context, XcLoggerConfigUpdate update,
-                                          ConfigUpdateCallback callback) {
+    public void submitConfiguration2(Context context, XcLoggerConfig2 update,
+                                     ConfigUpdateCallback callback) {
         singleExecutor.execute(() -> {
-            XcLoggerConfigUpdateResult result = executeConfigurationUpdate(context, update);
+            XcLoggerConfigUpdateResult result = executeConfiguration2(context, update);
             if (callback != null) callback.onResult(result);
         });
     }
 
-    public void submitConfigurationUpdateV3(Context context, XcLoggerConfigUpdateV3 update,
-                                            ConfigUpdateCallback callback) {
-        singleExecutor.execute(() -> {
-            XcLoggerConfigUpdateResult result = executeConfigurationUpdateV3(context, update);
-            if (callback != null) callback.onResult(result);
-        });
-    }
-
-    private XcLoggerConfigUpdateResult executeConfigurationUpdate(Context context,
-                                                                   XcLoggerConfigUpdate update) {
-        return executeConfigurationUpdate(context, update, null, "aidl:config_v2");
-    }
-
-    private XcLoggerConfigUpdateResult executeConfigurationUpdateV3(
-            Context context, XcLoggerConfigUpdateV3 updateV3) {
-        XcLoggerConfigUpdate baseUpdate = updateV3 != null ? updateV3.getBaseUpdate() : null;
-        if (baseUpdate == null) baseUpdate = new XcLoggerConfigUpdate();
-        String mode = updateV3 != null ? updateV3.getPackageFilterMode() : null;
-        return executeConfigurationUpdate(context, baseUpdate, mode, "aidl:config_v3");
+    private XcLoggerConfigUpdateResult executeConfiguration2(
+            Context context, XcLoggerConfig2 update) {
+        XcLoggerConfig2 safeUpdate = update != null ? update : new XcLoggerConfig2();
+        return executeConfigurationUpdate(context, safeUpdate,
+                safeUpdate.getPackageFilterMode(), "aidl:config_2");
     }
 
     private XcLoggerConfigUpdateResult executeConfigurationUpdate(
@@ -96,7 +82,7 @@ public class CommandSerialExecutor {
             return new XcLoggerConfigUpdateResult(requestId, XcLoggerConfigUpdateResult.INVALID_ARGUMENT,
                     e.getMessage(), "", false);
         } catch (Exception e) {
-            Log.e(TAG, "V2 configuration update failed", e);
+            Log.e(TAG, "Configuration update failed", e);
             return new XcLoggerConfigUpdateResult(requestId, XcLoggerConfigUpdateResult.INTERNAL_ERROR,
                     e.getMessage() == null ? "Configuration update failed" : e.getMessage(), "", false);
         }

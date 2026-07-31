@@ -94,8 +94,6 @@ public class XcLoggerConfigUpdate implements Parcelable {
     public void setTagWhitelist(ListMutation tagWhitelist) { this.tagWhitelist = tagWhitelist; }
     public ListMutation getPackageWhitelist() { return packageWhitelist; }
     public void setPackageWhitelist(ListMutation packageWhitelist) { this.packageWhitelist = packageWhitelist; }
-    public ListMutation getTagBlacklist() { return tagBlacklist; }
-    public void setTagBlacklist(ListMutation tagBlacklist) { this.tagBlacklist = tagBlacklist; }
     public ListMutation getPackageBlacklist() { return packageBlacklist; }
     public void setPackageBlacklist(ListMutation packageBlacklist) { this.packageBlacklist = packageBlacklist; }
 

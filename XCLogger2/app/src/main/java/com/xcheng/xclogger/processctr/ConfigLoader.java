@@ -23,7 +23,7 @@ import java.util.Set;
  */
 public class ConfigLoader {
     private static final String TAG = "ConfigLoader";
-    private static final int APK_CONFIG_VERSION = 4;
+    private static final int APK_CONFIG_VERSION = 5;
 
     private static ConfigLoader instance;
     private volatile XcLoggerConfig currentConfig;
@@ -56,8 +56,15 @@ public class ConfigLoader {
             if (storedVersion < APK_CONFIG_VERSION
                     && (db.isConfigInitialized() || db.hasSavedConfig())) {
                 // Existing installations keep every persisted value. loadConfig() supplies the
-                // whitelist mode only when the new key is absent, preserving legacy whitelists.
+                // OFF mode when the key is absent; existing explicit modes remain unchanged.
                 XcLoggerConfig migrated = loadFromDatabase(context);
+                if (migrated != null
+                        && XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(
+                                migrated.getPackageFilterMode())
+                        && "all".equals(migrated.getFilterPackage())
+                        && isEmpty(migrated.getFilterPackageBlacklist())) {
+                    migrated.setPackageFilterMode(XcLoggerConfig.PACKAGE_FILTER_MODE_OFF);
+                }
                 if (migrated != null && db.saveConfig(migrated)) {
                     db.setConfigInitialized(true);
                     db.setDatabaseVersion(APK_CONFIG_VERSION);
@@ -69,7 +76,7 @@ public class ConfigLoader {
                         new FileManager(context).appendOperationHistory(
                                 "Config migrated from v" + storedVersion + " to v"
                                         + APK_CONFIG_VERSION
-                                        + " (existing values preserved, package mode=whitelist by default)");
+                                        + " (existing lists preserved, all-pass whitelist normalized to off)");
                     } catch (Exception e) {
                         Log.w(TAG, "Failed to record operation history for config migration", e);
                     }

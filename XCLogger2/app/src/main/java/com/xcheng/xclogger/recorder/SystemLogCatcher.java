@@ -118,7 +118,7 @@ public class SystemLogCatcher {
     private long lastPrefixRefreshTime = 0;
     private boolean hasPackageFilter = false; // 是否有包过滤配置
     private boolean hasPackageBlacklist = false;
-    private String packageFilterMode = XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST;
+    private String packageFilterMode = XcLoggerConfig.PACKAGE_FILTER_MODE_OFF;
 
     /**
      * 日志行监听器接口
@@ -696,7 +696,7 @@ public class SystemLogCatcher {
         this.hasPackageFilter = false;
         this.hasPackageBlacklist = false;
         this.packageFilterMode = config != null
-                ? config.getPackageFilterMode() : XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST;
+                ? config.getPackageFilterMode() : XcLoggerConfig.PACKAGE_FILTER_MODE_OFF;
 
         // 解析Filter Tag
         if (config != null && config.getFilterTag() != null && !config.getFilterTag().equals("all")) {
@@ -870,6 +870,9 @@ public class SystemLogCatcher {
      * @return 是否匹配
      */
     private boolean matchesPackageMode(int uid, int pid) {
+        if (XcLoggerConfig.PACKAGE_FILTER_MODE_OFF.equals(packageFilterMode)) {
+            return true;
+        }
         if (XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(packageFilterMode)) {
             return !matchesIdentity(uidBlacklistSet, blacklistPidSet, uid, pid);
         }

@@ -137,14 +137,36 @@
             android:hint="Filter level"
             android:layout_marginBottom="16dp" />
 
-        <!-- Filter Package -->
-        <Switch
-            android:id="@+id/switch_package_whitelist_mode"
+        <!-- Package filter mode -->
+        <RadioGroup
+            android:id="@+id/rg_package_filter_mode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="horizontal"
             android:layout_marginBottom="12dp"
-            android:paddingVertical="8dp"
-            android:text="Package whitelist mode" />
+            android:paddingVertical="8dp">
+
+            <RadioButton
+                android:id="@+id/rb_package_filter_off"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="OFF" />
+
+            <RadioButton
+                android:id="@+id/rb_package_filter_whitelist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="Whitelist" />
+
+            <RadioButton
+                android:id="@+id/rb_package_filter_blacklist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="Blacklist" />
+        </RadioGroup>
 
         <TextView
             android:layout_width="match_parent"
@@ -160,27 +182,6 @@
             android:padding="12dp"
             android:inputType="text"
             android:hint="Filter package"
-            android:layout_marginBottom="16dp" />
-
-        <!-- ===== v1.2.2: White+Black list extensions ===== -->
-
-        <!-- Filter Tag Blacklist -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Filter Tag Blacklist"
-            android:visibility="gone"
-            android:textSize="16sp"
-            android:layout_marginBottom="4dp" />
-        <EditText
-            android:id="@+id/et_filter_tag_blacklist"
-            android:visibility="gone"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="@drawable/bg_rounded_gray"
-            android:padding="12dp"
-            android:inputType="text"
-            android:hint="Tag blacklist (comma-separated)"
             android:layout_marginBottom="16dp" />
 
         <!-- Filter Package Blacklist -->
@@ -199,63 +200,6 @@
             android:inputType="text"
             android:hint="Package blacklist (comma-separated)"
             android:layout_marginBottom="16dp" />
-
-        <!-- Filter Level Blacklist -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Filter Level Blacklist"
-            android:visibility="gone"
-            android:textSize="16sp"
-            android:layout_marginBottom="4dp" />
-        <EditText
-            android:id="@+id/et_filter_level_blacklist"
-            android:visibility="gone"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="@drawable/bg_rounded_gray"
-            android:padding="12dp"
-            android:inputType="text"
-            android:hint="Level blacklist (v,d,i,w,e,f comma-separated)"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Filter Content -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Filter Content (Whitelist)"
-            android:visibility="gone"
-            android:textSize="16sp"
-            android:layout_marginBottom="4dp" />
-        <EditText
-            android:id="@+id/et_filter_content"
-            android:visibility="gone"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="@drawable/bg_rounded_gray"
-            android:padding="12dp"
-            android:inputType="text"
-            android:hint="Content whitelist keywords (comma-separated)"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Filter Content Blacklist -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Filter Content Blacklist"
-            android:visibility="gone"
-            android:textSize="16sp"
-            android:layout_marginBottom="4dp" />
-        <EditText
-            android:id="@+id/et_filter_content_blacklist"
-            android:visibility="gone"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="@drawable/bg_rounded_gray"
-            android:padding="12dp"
-            android:inputType="text"
-            android:hint="Content blacklist keywords (comma-separated)"
-            android:layout_marginBottom="24dp" />
 
         <!-- Save Button -->
         <Button

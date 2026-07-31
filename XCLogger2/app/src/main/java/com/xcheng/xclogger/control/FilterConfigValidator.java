@@ -22,7 +22,6 @@ public final class FilterConfigValidator {
         validateTag(config.getFilterTag());
         validateLevel(config.getFilterLevel());
         validatePackage(config.getFilterPackage());
-        validateTagBlacklist(config.getFilterTagBlacklist());
         validatePackageBlacklist(config.getFilterPackageBlacklist());
         validatePackageFilterMode(config.getPackageFilterMode());
     }
@@ -33,10 +32,6 @@ public final class FilterConfigValidator {
 
     public static void validatePackage(String value) {
         validateList(value, "filterPackage", PACKAGE_PATTERN, false);
-    }
-
-    public static void validateTagBlacklist(String value) {
-        validateOptionalList(value, "filterTagBlacklist", TAG_PATTERN);
     }
 
     public static void validatePackageBlacklist(String value) {
@@ -55,7 +50,8 @@ public final class FilterConfigValidator {
     }
 
     public static void validatePackageFilterMode(String value) {
-        if (!XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(value)
+        if (!XcLoggerConfig.PACKAGE_FILTER_MODE_OFF.equals(value)
+                && !XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(value)
                 && !XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(value)) {
             throw new IllegalArgumentException("invalid packageFilterMode");
         }

@@ -27,7 +27,7 @@
         <level>v</level>
         <!-- all-No filtering -->
         <package_name>all</package_name>
-        <package_filter_mode>whitelist</package_filter_mode>
+        <package_filter_mode>off</package_filter_mode>
 
         <!-- Blacklist (optional): elements to exclude from whitelist results -->
         <tag_blacklist></tag_blacklist>

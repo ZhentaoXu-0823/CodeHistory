@@ -4,7 +4,8 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.Switch;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.xcheng.xclogger.R;
@@ -23,10 +24,9 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
 
     private EditText etTotalSize, etFileSize, etBufferSize, etLogDir, etLogPeriod;
     private EditText etFilterTag, etFilterLevel, etFilterPackage;
-    // v1.2.2: white+black list extensions
-    private EditText etFilterTagBlacklist, etFilterPackageBlacklist, etFilterLevelBlacklist;
-    private EditText etFilterContent, etFilterContentBlacklist;
-    private Switch switchPackageWhitelistMode;
+    private EditText etFilterPackageBlacklist;
+    private RadioGroup packageFilterModeGroup;
+    private RadioButton rbPackageOff, rbPackageWhitelist, rbPackageBlacklist;
     private Button btnSave;
 
     private boolean isLogRunning = false;
@@ -60,12 +60,11 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         etFilterTag = findViewById(R.id.et_filter_tag);
         etFilterLevel = findViewById(R.id.et_filter_level);
         etFilterPackage = findViewById(R.id.et_filter_package);
-        switchPackageWhitelistMode = findViewById(R.id.switch_package_whitelist_mode);
-        etFilterTagBlacklist = findViewById(R.id.et_filter_tag_blacklist);
+        packageFilterModeGroup = findViewById(R.id.rg_package_filter_mode);
+        rbPackageOff = findViewById(R.id.rb_package_filter_off);
+        rbPackageWhitelist = findViewById(R.id.rb_package_filter_whitelist);
+        rbPackageBlacklist = findViewById(R.id.rb_package_filter_blacklist);
         etFilterPackageBlacklist = findViewById(R.id.et_filter_package_blacklist);
-        etFilterLevelBlacklist = findViewById(R.id.et_filter_level_blacklist);
-        etFilterContent = findViewById(R.id.et_filter_content);
-        etFilterContentBlacklist = findViewById(R.id.et_filter_content_blacklist);
         btnSave = findViewById(R.id.btn_save);
 
         btnSave.setOnClickListener(v -> save());
@@ -88,14 +87,15 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             etFilterTag.setText(config.getFilterTag());
             etFilterLevel.setText(config.getFilterLevel());
             etFilterPackage.setText(config.getFilterPackage());
-            switchPackageWhitelistMode.setChecked(
-                    XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(
-                            config.getPackageFilterMode()));
-            etFilterTagBlacklist.setText(config.getFilterTagBlacklist());
+            String packageMode = config.getPackageFilterMode();
+            if (XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(packageMode)) {
+                packageFilterModeGroup.check(R.id.rb_package_filter_whitelist);
+            } else if (XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(packageMode)) {
+                packageFilterModeGroup.check(R.id.rb_package_filter_blacklist);
+            } else {
+                packageFilterModeGroup.check(R.id.rb_package_filter_off);
+            }
             etFilterPackageBlacklist.setText(config.getFilterPackageBlacklist());
-            etFilterLevelBlacklist.setText(config.getFilterLevelBlacklist());
-            etFilterContent.setText(config.getFilterContent());
-            etFilterContentBlacklist.setText(config.getFilterContentBlacklist());
         }
     }
 
@@ -117,12 +117,10 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         etFilterTag.setEnabled(enabled);
         etFilterLevel.setEnabled(enabled);
         etFilterPackage.setEnabled(enabled);
-        switchPackageWhitelistMode.setEnabled(enabled);
-        etFilterTagBlacklist.setEnabled(enabled);
+        rbPackageOff.setEnabled(enabled);
+        rbPackageWhitelist.setEnabled(enabled);
+        rbPackageBlacklist.setEnabled(enabled);
         etFilterPackageBlacklist.setEnabled(enabled);
-        etFilterLevelBlacklist.setEnabled(enabled);
-        etFilterContent.setEnabled(enabled);
-        etFilterContentBlacklist.setEnabled(enabled);
         btnSave.setEnabled(enabled);
 
         if (!enabled) {
@@ -135,11 +133,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             etFilterTag.setHint(disabledHint);
             etFilterLevel.setHint(disabledHint);
             etFilterPackage.setHint(disabledHint);
-            etFilterTagBlacklist.setHint(disabledHint);
             etFilterPackageBlacklist.setHint(disabledHint);
-            etFilterLevelBlacklist.setHint(disabledHint);
-            etFilterContent.setHint(disabledHint);
-            etFilterContentBlacklist.setHint(disabledHint);
         } else {
             etTotalSize.setHint(R.string.hint_total_size);
             etFileSize.setHint(R.string.hint_file_size);
@@ -149,11 +143,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             etFilterTag.setHint(R.string.hint_filter_tag);
             etFilterLevel.setHint(R.string.hint_filter_level);
             etFilterPackage.setHint(R.string.hint_filter_package);
-            etFilterTagBlacklist.setHint(R.string.hint_filter_tag_blacklist);
             etFilterPackageBlacklist.setHint(R.string.hint_filter_package_blacklist);
-            etFilterLevelBlacklist.setHint(R.string.hint_filter_level_blacklist);
-            etFilterContent.setHint(R.string.hint_filter_content);
-            etFilterContentBlacklist.setHint(R.string.hint_filter_content_blacklist);
         }
     }
 
@@ -208,14 +198,19 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             newConfig.setFilterTag(filterTag);
             newConfig.setFilterLevel(filterLevel);
             newConfig.setFilterPackage(filterPackage);
-            newConfig.setPackageFilterMode(switchPackageWhitelistMode.isChecked()
-                    ? XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST
-                    : XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST);
-            newConfig.setFilterTagBlacklist(etFilterTagBlacklist.getText().toString().trim());
+            int selectedModeId = packageFilterModeGroup.getCheckedRadioButtonId();
+            if (selectedModeId == R.id.rb_package_filter_whitelist) {
+                newConfig.setPackageFilterMode(XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST);
+            } else if (selectedModeId == R.id.rb_package_filter_blacklist) {
+                newConfig.setPackageFilterMode(XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST);
+            } else {
+                newConfig.setPackageFilterMode(XcLoggerConfig.PACKAGE_FILTER_MODE_OFF);
+            }
+            newConfig.setFilterTagBlacklist(config.getFilterTagBlacklist());
             newConfig.setFilterPackageBlacklist(etFilterPackageBlacklist.getText().toString().trim());
-            newConfig.setFilterLevelBlacklist(etFilterLevelBlacklist.getText().toString().trim());
-            newConfig.setFilterContent(etFilterContent.getText().toString().trim());
-            newConfig.setFilterContentBlacklist(etFilterContentBlacklist.getText().toString().trim());
+            newConfig.setFilterLevelBlacklist(config.getFilterLevelBlacklist());
+            newConfig.setFilterContent(config.getFilterContent());
+            newConfig.setFilterContentBlacklist(config.getFilterContentBlacklist());
 
             if (!ConfigLoader.getInstance().updateConfig(this, newConfig)) {
                 throw new IllegalStateException("configuration was rejected or could not be persisted");

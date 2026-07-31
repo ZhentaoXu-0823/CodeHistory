@@ -20,8 +20,7 @@ import java.util.regex.Pattern;
 
 /** Fluent, single-use builder for atomic XCLogger configuration updates. */
 public final class XcLoggerConfigUpdater {
-    public static final int REQUIRED_API_VERSION = 2;
-    public static final int PACKAGE_FILTER_MODE_API_VERSION = 3;
+    public static final int REQUIRED_API_VERSION = 4;
     private static final int MAX_LIST_ITEMS = 64;
     private static final long BLOCKING_TIMEOUT_SECONDS = 15;
     private static final Pattern TAG_PATTERN = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
@@ -34,11 +33,7 @@ public final class XcLoggerConfigUpdater {
 
     public interface Transport {
         int getApiVersion();
-        void submit(XcLoggerConfigUpdate update, CommitCallback callback);
-    }
-
-    public interface V3Transport extends Transport {
-        void submitV3(XcLoggerConfigUpdateV3 update, CommitCallback callback);
+        void submit(XcLoggerConfig2 update, CommitCallback callback);
     }
 
     public enum LogLevel {
@@ -49,8 +44,9 @@ public final class XcLoggerConfigUpdater {
     }
 
     public enum PackageFilterMode {
-        WHITELIST(XcLoggerConfigUpdateV3.PACKAGE_FILTER_MODE_WHITELIST),
-        BLACKLIST(XcLoggerConfigUpdateV3.PACKAGE_FILTER_MODE_BLACKLIST);
+        OFF(XcLoggerConfig2.PACKAGE_FILTER_MODE_OFF),
+        WHITELIST(XcLoggerConfig2.PACKAGE_FILTER_MODE_WHITELIST),
+        BLACKLIST(XcLoggerConfig2.PACKAGE_FILTER_MODE_BLACKLIST);
         private final String wireValue;
         PackageFilterMode(String wireValue) { this.wireValue = wireValue; }
         public String wireValue() { return wireValue; }
@@ -70,7 +66,6 @@ public final class XcLoggerConfigUpdater {
     private String packageFilterMode;
     private final MutableListMutation tagWhitelist = new MutableListMutation(true, ValueType.TAG);
     private final MutableListMutation packageWhitelist = new MutableListMutation(true, ValueType.PACKAGE);
-    private final MutableListMutation tagBlacklist = new MutableListMutation(false, ValueType.TAG);
     private final MutableListMutation packageBlacklist = new MutableListMutation(false, ValueType.PACKAGE);
 
     public XcLoggerConfigUpdater(Transport transport, Executor callbackExecutor) {
@@ -145,26 +140,19 @@ public final class XcLoggerConfigUpdater {
     public XcLoggerConfigUpdater packageFilterMode(String value) {
         checkMutable();
         String normalized = value == null ? "" : value.trim().toLowerCase(Locale.US);
-        if (!XcLoggerConfigUpdateV3.PACKAGE_FILTER_MODE_WHITELIST.equals(normalized)
-                && !XcLoggerConfigUpdateV3.PACKAGE_FILTER_MODE_BLACKLIST.equals(normalized)) {
-            throw new IllegalArgumentException("packageFilterMode must be whitelist or blacklist");
+        if (!XcLoggerConfig2.PACKAGE_FILTER_MODE_OFF.equals(normalized)
+                && !XcLoggerConfig2.PACKAGE_FILTER_MODE_WHITELIST.equals(normalized)
+                && !XcLoggerConfig2.PACKAGE_FILTER_MODE_BLACKLIST.equals(normalized)) {
+            throw new IllegalArgumentException(
+                    "packageFilterMode must be off, whitelist, or blacklist");
         }
         packageFilterMode = normalized;
         return this;
     }
 
-    public XcLoggerConfigUpdater usePackageWhitelist() {
-        return packageFilterMode(PackageFilterMode.WHITELIST);
-    }
-
-    public XcLoggerConfigUpdater usePackageBlacklist() {
-        return packageFilterMode(PackageFilterMode.BLACKLIST);
-    }
-
     public XcLoggerConfigUpdater filterTags(String... values) { return filterTags(Arrays.asList(values)); }
     public XcLoggerConfigUpdater filterTags(Collection<String> values) { checkMutable(); tagWhitelist.replace(values); return this; }
     public XcLoggerConfigUpdater filterTagsCsv(String value) { return filterTags(parseCsv(value)); }
-    public XcLoggerConfigUpdater allTags() { return filterTags("all"); }
     public XcLoggerConfigUpdater addTag(String value) { checkMutable(); tagWhitelist.add(value); return this; }
     public XcLoggerConfigUpdater removeTag(String value) { checkMutable(); tagWhitelist.remove(value); return this; }
 
@@ -174,13 +162,6 @@ public final class XcLoggerConfigUpdater {
     public XcLoggerConfigUpdater allPackages() { return filterPackages("all"); }
     public XcLoggerConfigUpdater addPackage(String value) { checkMutable(); packageWhitelist.add(value); return this; }
     public XcLoggerConfigUpdater removePackage(String value) { checkMutable(); packageWhitelist.remove(value); return this; }
-
-    public XcLoggerConfigUpdater blacklistTags(String... values) { return blacklistTags(Arrays.asList(values)); }
-    public XcLoggerConfigUpdater blacklistTags(Collection<String> values) { checkMutable(); tagBlacklist.replace(values); return this; }
-    public XcLoggerConfigUpdater blacklistTagsCsv(String value) { return blacklistTags(parseCsv(value)); }
-    public XcLoggerConfigUpdater addBlacklistedTag(String value) { checkMutable(); tagBlacklist.add(value); return this; }
-    public XcLoggerConfigUpdater removeBlacklistedTag(String value) { checkMutable(); tagBlacklist.remove(value); return this; }
-    public XcLoggerConfigUpdater clearTagBlacklist() { return blacklistTags(new ArrayList<>()); }
 
     public XcLoggerConfigUpdater blacklistPackages(String... values) { return blacklistPackages(Arrays.asList(values)); }
     public XcLoggerConfigUpdater blacklistPackages(Collection<String> values) { checkMutable(); packageBlacklist.replace(values); return this; }
@@ -223,7 +204,7 @@ public final class XcLoggerConfigUpdater {
     private void submit(CommitCallback callback) {
         if (!sealed.compareAndSet(false, true)) throw new IllegalStateException("updater is already committed");
         validateCrossFields();
-        XcLoggerConfigUpdate update = buildUpdate();
+        XcLoggerConfig2 update = buildUpdate();
         AtomicBoolean delivered = new AtomicBoolean(false);
         CommitCallback once = value -> {
             if (!delivered.compareAndSet(false, true)) return;
@@ -231,8 +212,7 @@ public final class XcLoggerConfigUpdater {
                     : result(XcLoggerConfigUpdateResult.INTERNAL_ERROR, "Null result", "", false);
             callbackExecutor.execute(() -> { if (callback != null) callback.onComplete(safe); });
         };
-        boolean hasPackageFilterMode = packageFilterMode != null;
-        if (!update.hasChanges() && !hasPackageFilterMode) {
+        if (!update.hasChanges()) {
             once.onComplete(result(XcLoggerConfigUpdateResult.NO_CHANGES, "No changes", "", false));
             return;
         }
@@ -245,28 +225,18 @@ public final class XcLoggerConfigUpdater {
             }
             if (apiVersion < REQUIRED_API_VERSION) {
                 once.onComplete(result(XcLoggerConfigUpdateResult.UNSUPPORTED_SERVICE_VERSION,
-                        "XCLogger service does not support configuration V2", "", false));
+                        "XCLogger service does not support updateConfiguration2", "", false));
                 return;
             }
-            if (hasPackageFilterMode) {
-                if (apiVersion < PACKAGE_FILTER_MODE_API_VERSION
-                        || !(transport instanceof V3Transport)) {
-                    once.onComplete(result(XcLoggerConfigUpdateResult.UNSUPPORTED_SERVICE_VERSION,
-                            "XCLogger service does not support package filter mode", "", false));
-                    return;
-                }
-                ((V3Transport) transport).submitV3(buildUpdateV3(update), once);
-            } else {
-                transport.submit(update, once);
-            }
+            transport.submit(update, once);
         } catch (RuntimeException e) {
             once.onComplete(result(XcLoggerConfigUpdateResult.REMOTE_ERROR,
                     e.getMessage() == null ? "Transport failed" : e.getMessage(), "", false));
         }
     }
 
-    private XcLoggerConfigUpdate buildUpdate() {
-        XcLoggerConfigUpdate update = new XcLoggerConfigUpdate();
+    private XcLoggerConfig2 buildUpdate() {
+        XcLoggerConfig2 update = new XcLoggerConfig2();
         update.setRequestId(requestId);
         update.setPresentFields(presentFields);
         update.setTotalSizeMb(totalSizeMb);
@@ -277,14 +247,7 @@ public final class XcLoggerConfigUpdater {
         update.setFilterLevel(filterLevel);
         update.setTagWhitelist(tagWhitelist.build());
         update.setPackageWhitelist(packageWhitelist.build());
-        update.setTagBlacklist(tagBlacklist.build());
         update.setPackageBlacklist(packageBlacklist.build());
-        return update;
-    }
-
-    private XcLoggerConfigUpdateV3 buildUpdateV3(XcLoggerConfigUpdate baseUpdate) {
-        XcLoggerConfigUpdateV3 update = new XcLoggerConfigUpdateV3();
-        update.setBaseUpdate(baseUpdate);
         update.setPackageFilterMode(packageFilterMode);
         return update;
     }

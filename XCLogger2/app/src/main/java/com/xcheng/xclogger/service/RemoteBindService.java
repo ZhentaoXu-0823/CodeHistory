@@ -20,8 +20,7 @@ import com.xcheng.xclogger.control.SourceResolver;
 import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.util.XcLoggerConfig;
-import com.xcheng.xclogger.util.XcLoggerConfigUpdate;
-import com.xcheng.xclogger.util.XcLoggerConfigUpdateV3;
+import com.xcheng.xclogger.util.XcLoggerConfig2;
 import com.xcheng.xclogger.util.XcLoggerConfigUpdateResult;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
@@ -157,40 +156,26 @@ public class RemoteBindService extends Service {
 
         @Override
         public int getApiVersion() {
-            return 3;
-        }
-
-        @Override
-        public void updateConfigurationV2(XcLoggerConfigUpdate update,
-                                          IXcLoggerConfigUpdateCallback callback) {
-            CommandSerialExecutor.getInstance().submitConfigurationUpdate(
-                    getApplicationContext(), update, result -> {
-                        if (callback == null) return;
-                        try {
-                            callback.onComplete(result);
-                        } catch (RemoteException e) {
-                            Log.w(TAG, "Configuration V2 callback failed", e);
-                        }
-                    });
+            return 4;
         }
 
         @Override
         public String getPackageFilterMode() {
             XcLoggerConfig current = ConfigLoader.current();
             return current != null ? current.getPackageFilterMode()
-                    : XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST;
+                    : XcLoggerConfig.PACKAGE_FILTER_MODE_OFF;
         }
 
         @Override
-        public void updateConfigurationV3(XcLoggerConfigUpdateV3 update,
-                                          IXcLoggerConfigUpdateCallback callback) {
-            CommandSerialExecutor.getInstance().submitConfigurationUpdateV3(
+        public void updateConfiguration2(XcLoggerConfig2 update,
+                                         IXcLoggerConfigUpdateCallback callback) {
+            CommandSerialExecutor.getInstance().submitConfiguration2(
                     getApplicationContext(), update, result -> {
                         if (callback == null) return;
                         try {
                             callback.onComplete(result);
                         } catch (RemoteException e) {
-                            Log.w(TAG, "Configuration V3 callback failed", e);
+                            Log.w(TAG, "Configuration callback failed", e);
                         }
                     });
         }

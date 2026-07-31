@@ -91,6 +91,9 @@ public class XcLoggerDatabase {
         editor.putString(K_FILTER_PACKAGE_MODE, config.getPackageFilterMode());
         editor.putString(K_FILTER_TAG_BLACKLIST, config.getFilterTagBlacklist());
         editor.putString(K_FILTER_PACKAGE_BLACKLIST, config.getFilterPackageBlacklist());
+        editor.putString(K_FILTER_LEVEL_BLACKLIST, config.getFilterLevelBlacklist());
+        editor.putString(K_FILTER_CONTENT, config.getFilterContent());
+        editor.putString(K_FILTER_CONTENT_BLACKLIST, config.getFilterContentBlacklist());
     }
 
     public boolean hasSavedConfig() {
@@ -104,7 +107,10 @@ public class XcLoggerDatabase {
                     || prefs.contains(K_FILTER_LEVEL)
                     || prefs.contains(K_FILTER_PACKAGE)
                     || prefs.contains(K_FILTER_TAG_BLACKLIST)
-                    || prefs.contains(K_FILTER_PACKAGE_BLACKLIST);
+                    || prefs.contains(K_FILTER_PACKAGE_BLACKLIST)
+                    || prefs.contains(K_FILTER_LEVEL_BLACKLIST)
+                    || prefs.contains(K_FILTER_CONTENT)
+                    || prefs.contains(K_FILTER_CONTENT_BLACKLIST);
         } catch (Exception e) {
             Log.e(TAG, "Failed to check saved config", e);
             return false;
@@ -123,7 +129,7 @@ public class XcLoggerDatabase {
             config.setFilterLevel(prefs.getString(K_FILTER_LEVEL, "v"));
             config.setFilterPackage(prefs.getString(K_FILTER_PACKAGE, "all"));
             config.setPackageFilterMode(prefs.getString(K_FILTER_PACKAGE_MODE,
-                    XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST));
+                    XcLoggerConfig.PACKAGE_FILTER_MODE_OFF));
             config.setFilterTagBlacklist(prefs.getString(K_FILTER_TAG_BLACKLIST, ""));
             config.setFilterPackageBlacklist(prefs.getString(K_FILTER_PACKAGE_BLACKLIST, ""));
             config.setFilterLevelBlacklist(prefs.getString(K_FILTER_LEVEL_BLACKLIST, ""));

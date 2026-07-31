@@ -42,9 +42,6 @@ final class ConfigUpdateApplier {
         if (update.getPackageWhitelist() != null) {
             merged.setFilterPackage(applyList(current.getFilterPackage(), update.getPackageWhitelist(), true, PACKAGE_PATTERN));
         }
-        if (update.getTagBlacklist() != null) {
-            merged.setFilterTagBlacklist(applyList(current.getFilterTagBlacklist(), update.getTagBlacklist(), false, TAG_PATTERN));
-        }
         if (update.getPackageBlacklist() != null) {
             merged.setFilterPackageBlacklist(applyList(current.getFilterPackageBlacklist(), update.getPackageBlacklist(), false, PACKAGE_PATTERN));
         }
@@ -125,7 +122,8 @@ final class ConfigUpdateApplier {
 
     private String normalizePackageFilterMode(String value) {
         String normalized = value == null ? "" : value.trim().toLowerCase(Locale.US);
-        if (!XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(normalized)
+        if (!XcLoggerConfig.PACKAGE_FILTER_MODE_OFF.equals(normalized)
+                && !XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(normalized)
                 && !XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(normalized)) {
             throw new IllegalArgumentException("invalid packageFilterMode");
         }
@@ -177,7 +175,6 @@ final class ConfigUpdateApplier {
         if (!Objects.equals(oldValue.getFilterTag(), newValue.getFilterTag())) changed.add("filterTag");
         if (!Objects.equals(oldValue.getFilterLevel(), newValue.getFilterLevel())) changed.add("filterLevel");
         if (!Objects.equals(oldValue.getFilterPackage(), newValue.getFilterPackage())) changed.add("filterPackage");
-        if (!Objects.equals(oldValue.getFilterTagBlacklist(), newValue.getFilterTagBlacklist())) changed.add("filterTagBlacklist");
         if (!Objects.equals(oldValue.getFilterPackageBlacklist(), newValue.getFilterPackageBlacklist())) changed.add("filterPackageBlacklist");
         if (!Objects.equals(oldValue.getPackageFilterMode(), newValue.getPackageFilterMode())) changed.add("packageFilterMode");
         return changed;

@@ -34,6 +34,9 @@ public class PackageEventManager {
      */
     public static boolean isPackageMatched(XcLoggerConfig config, String packageName) {
         if (config == null) return false;
+        if (XcLoggerConfig.PACKAGE_FILTER_MODE_OFF.equals(config.getPackageFilterMode())) {
+            return false;
+        }
         if (XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(config.getPackageFilterMode())) {
             return isPackageMatched(config.getFilterPackageBlacklist(), packageName);
         }

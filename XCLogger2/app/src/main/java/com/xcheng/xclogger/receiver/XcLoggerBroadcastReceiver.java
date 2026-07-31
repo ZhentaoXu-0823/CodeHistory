@@ -199,12 +199,7 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         if (intent.hasExtra("filter_tag")) patch.setFilterTag(intent.getStringExtra("filter_tag"));
         if (intent.hasExtra("filter_level")) patch.setFilterLevel(intent.getStringExtra("filter_level"));
         if (intent.hasExtra("filter_package")) patch.setFilterPackage(intent.getStringExtra("filter_package"));
-        // v1.2.2: white+black list extensions
-        if (intent.hasExtra("filter_tag_blacklist")) patch.setFilterTagBlacklist(intent.getStringExtra("filter_tag_blacklist"));
         if (intent.hasExtra("filter_package_blacklist")) patch.setFilterPackageBlacklist(intent.getStringExtra("filter_package_blacklist"));
-        if (intent.hasExtra("filter_level_blacklist")) patch.setFilterLevelBlacklist(intent.getStringExtra("filter_level_blacklist"));
-        if (intent.hasExtra("filter_content")) patch.setFilterContent(intent.getStringExtra("filter_content"));
-        if (intent.hasExtra("filter_content_blacklist")) patch.setFilterContentBlacklist(intent.getStringExtra("filter_content_blacklist"));
 
         return patch;
     }

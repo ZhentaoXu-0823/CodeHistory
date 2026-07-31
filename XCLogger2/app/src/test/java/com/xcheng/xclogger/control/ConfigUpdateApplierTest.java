@@ -5,7 +5,6 @@ import com.xcheng.xclogger.util.XcLoggerConfigUpdate;
 
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
@@ -20,21 +19,6 @@ public class ConfigUpdateApplierTest {
         XcLoggerConfig afterA = applier.apply(current, addA).config;
         XcLoggerConfig afterB = applier.apply(afterA, updateWithTagAdd("B")).config;
         assertEquals("A,B", afterB.getFilterTag());
-    }
-
-    @Test
-    public void blacklistReplaceAddAndRemoveAreDeterministic() {
-        XcLoggerConfig current = baseConfig();
-        XcLoggerConfigUpdate replace = new XcLoggerConfigUpdate();
-        replace.setTagBlacklist(new XcLoggerConfigUpdate.ListMutation(true,
-                Arrays.asList("Noisy", "Chatty"), Collections.emptyList(), Collections.emptyList()));
-        XcLoggerConfig configured = applier.apply(current, replace).config;
-
-        XcLoggerConfigUpdate mutate = new XcLoggerConfigUpdate();
-        mutate.setTagBlacklist(new XcLoggerConfigUpdate.ListMutation(false,
-                Collections.emptyList(), Collections.singletonList("Verbose"), Collections.singletonList("Noisy")));
-        XcLoggerConfig result = applier.apply(configured, mutate).config;
-        assertEquals("Chatty,Verbose", result.getFilterTagBlacklist());
     }
 
     @Test
@@ -57,6 +41,20 @@ public class ConfigUpdateApplierTest {
         XcLoggerConfig result = applier.apply(current, emptyUpdate, "blacklist").config;
 
         assertEquals("blacklist", result.getPackageFilterMode());
+        assertEquals("com.allowed", result.getFilterPackage());
+        assertEquals("com.blocked", result.getFilterPackageBlacklist());
+    }
+
+    @Test
+    public void packageFilterOffPreservesBothLists() {
+        XcLoggerConfig current = baseConfig();
+        current.setFilterPackage("com.allowed");
+        current.setFilterPackageBlacklist("com.blocked");
+
+        XcLoggerConfig result = applier.apply(
+                current, new XcLoggerConfigUpdate(), "off").config;
+
+        assertEquals("off", result.getPackageFilterMode());
         assertEquals("com.allowed", result.getFilterPackage());
         assertEquals("com.blocked", result.getFilterPackageBlacklist());
     }
