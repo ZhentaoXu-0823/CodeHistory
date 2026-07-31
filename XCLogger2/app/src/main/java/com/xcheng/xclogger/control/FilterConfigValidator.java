@@ -22,6 +22,9 @@ public final class FilterConfigValidator {
         validateTag(config.getFilterTag());
         validateLevel(config.getFilterLevel());
         validatePackage(config.getFilterPackage());
+        validateTagBlacklist(config.getFilterTagBlacklist());
+        validatePackageBlacklist(config.getFilterPackageBlacklist());
+        validatePackageFilterMode(config.getPackageFilterMode());
     }
 
     public static void validateTag(String value) {
@@ -30,6 +33,14 @@ public final class FilterConfigValidator {
 
     public static void validatePackage(String value) {
         validateList(value, "filterPackage", PACKAGE_PATTERN, false);
+    }
+
+    public static void validateTagBlacklist(String value) {
+        validateOptionalList(value, "filterTagBlacklist", TAG_PATTERN);
+    }
+
+    public static void validatePackageBlacklist(String value) {
+        validateOptionalList(value, "filterPackageBlacklist", PACKAGE_PATTERN);
     }
 
     public static void validateLevel(String value) {
@@ -41,6 +52,13 @@ public final class FilterConfigValidator {
             return;
         }
         throw new IllegalArgumentException("invalid filterLevel");
+    }
+
+    public static void validatePackageFilterMode(String value) {
+        if (!XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(value)
+                && !XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(value)) {
+            throw new IllegalArgumentException("invalid packageFilterMode");
+        }
     }
 
     private static void validateList(String value, String fieldName, Pattern itemPattern, boolean allowAll) {
@@ -65,5 +83,10 @@ public final class FilterConfigValidator {
                 throw new IllegalArgumentException("invalid " + fieldName);
             }
         }
+    }
+
+    private static void validateOptionalList(String value, String fieldName, Pattern itemPattern) {
+        if (value == null || value.trim().isEmpty()) return;
+        validateList(value, fieldName, itemPattern, false);
     }
 }

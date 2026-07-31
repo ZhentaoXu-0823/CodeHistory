@@ -19,6 +19,7 @@ public class XcLoggerDatabase {
     private static final String K_FILTER_TAG = "filter_tag";
     private static final String K_FILTER_LEVEL = "filter_level";
     private static final String K_FILTER_PACKAGE = "filter_package";
+    private static final String K_FILTER_PACKAGE_MODE = "filter_package_mode";
     private static final String K_FILTER_TAG_BLACKLIST = "filter_tag_blacklist";
     private static final String K_FILTER_PACKAGE_BLACKLIST = "filter_package_blacklist";
     private static final String K_FILTER_LEVEL_BLACKLIST = "filter_level_blacklist";
@@ -87,6 +88,9 @@ public class XcLoggerDatabase {
         editor.putString(K_FILTER_TAG, config.getFilterTag());
         editor.putString(K_FILTER_LEVEL, config.getFilterLevel());
         editor.putString(K_FILTER_PACKAGE, config.getFilterPackage());
+        editor.putString(K_FILTER_PACKAGE_MODE, config.getPackageFilterMode());
+        editor.putString(K_FILTER_TAG_BLACKLIST, config.getFilterTagBlacklist());
+        editor.putString(K_FILTER_PACKAGE_BLACKLIST, config.getFilterPackageBlacklist());
     }
 
     public boolean hasSavedConfig() {
@@ -98,7 +102,9 @@ public class XcLoggerDatabase {
                     || prefs.contains(K_LOG_PERIOD)
                     || prefs.contains(K_FILTER_TAG)
                     || prefs.contains(K_FILTER_LEVEL)
-                    || prefs.contains(K_FILTER_PACKAGE);
+                    || prefs.contains(K_FILTER_PACKAGE)
+                    || prefs.contains(K_FILTER_TAG_BLACKLIST)
+                    || prefs.contains(K_FILTER_PACKAGE_BLACKLIST);
         } catch (Exception e) {
             Log.e(TAG, "Failed to check saved config", e);
             return false;
@@ -114,8 +120,10 @@ public class XcLoggerDatabase {
             config.setLogDir(prefs.getString(K_LOG_DIR, com.xcheng.xclogger.filemanager.FileManager.DEFAULT_LOG_DIR));
             config.setLogPeriodHours(prefs.getInt(K_LOG_PERIOD, 168));
             config.setFilterTag(prefs.getString(K_FILTER_TAG, "all"));
-            config.setFilterLevel(prefs.getString(K_FILTER_LEVEL, "all"));
+            config.setFilterLevel(prefs.getString(K_FILTER_LEVEL, "v"));
             config.setFilterPackage(prefs.getString(K_FILTER_PACKAGE, "all"));
+            config.setPackageFilterMode(prefs.getString(K_FILTER_PACKAGE_MODE,
+                    XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST));
             config.setFilterTagBlacklist(prefs.getString(K_FILTER_TAG_BLACKLIST, ""));
             config.setFilterPackageBlacklist(prefs.getString(K_FILTER_PACKAGE_BLACKLIST, ""));
             config.setFilterLevelBlacklist(prefs.getString(K_FILTER_LEVEL_BLACKLIST, ""));

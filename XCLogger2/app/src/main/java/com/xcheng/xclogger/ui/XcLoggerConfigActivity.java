@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Switch;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.xcheng.xclogger.R;
@@ -25,6 +26,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
     // v1.2.2: white+black list extensions
     private EditText etFilterTagBlacklist, etFilterPackageBlacklist, etFilterLevelBlacklist;
     private EditText etFilterContent, etFilterContentBlacklist;
+    private Switch switchPackageWhitelistMode;
     private Button btnSave;
 
     private boolean isLogRunning = false;
@@ -58,6 +60,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         etFilterTag = findViewById(R.id.et_filter_tag);
         etFilterLevel = findViewById(R.id.et_filter_level);
         etFilterPackage = findViewById(R.id.et_filter_package);
+        switchPackageWhitelistMode = findViewById(R.id.switch_package_whitelist_mode);
         etFilterTagBlacklist = findViewById(R.id.et_filter_tag_blacklist);
         etFilterPackageBlacklist = findViewById(R.id.et_filter_package_blacklist);
         etFilterLevelBlacklist = findViewById(R.id.et_filter_level_blacklist);
@@ -85,6 +88,9 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             etFilterTag.setText(config.getFilterTag());
             etFilterLevel.setText(config.getFilterLevel());
             etFilterPackage.setText(config.getFilterPackage());
+            switchPackageWhitelistMode.setChecked(
+                    XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(
+                            config.getPackageFilterMode()));
             etFilterTagBlacklist.setText(config.getFilterTagBlacklist());
             etFilterPackageBlacklist.setText(config.getFilterPackageBlacklist());
             etFilterLevelBlacklist.setText(config.getFilterLevelBlacklist());
@@ -111,6 +117,7 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
         etFilterTag.setEnabled(enabled);
         etFilterLevel.setEnabled(enabled);
         etFilterPackage.setEnabled(enabled);
+        switchPackageWhitelistMode.setEnabled(enabled);
         etFilterTagBlacklist.setEnabled(enabled);
         etFilterPackageBlacklist.setEnabled(enabled);
         etFilterLevelBlacklist.setEnabled(enabled);
@@ -201,6 +208,9 @@ public class XcLoggerConfigActivity extends AppCompatActivity {
             newConfig.setFilterTag(filterTag);
             newConfig.setFilterLevel(filterLevel);
             newConfig.setFilterPackage(filterPackage);
+            newConfig.setPackageFilterMode(switchPackageWhitelistMode.isChecked()
+                    ? XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST
+                    : XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST);
             newConfig.setFilterTagBlacklist(etFilterTagBlacklist.getText().toString().trim());
             newConfig.setFilterPackageBlacklist(etFilterPackageBlacklist.getText().toString().trim());
             newConfig.setFilterLevelBlacklist(etFilterLevelBlacklist.getText().toString().trim());

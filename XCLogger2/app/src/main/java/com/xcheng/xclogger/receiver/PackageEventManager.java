@@ -12,7 +12,7 @@ import com.xcheng.xclogger.util.XcLoggerConfig;
 
 /**
  * PackageEventManager - 包事件管理器
- * 统一处理 PACKAGE_ADDED / PACKAGE_REMOVED 事件及 PID 映射刷新
+ * 统一处理 PACKAGE_ADDED / PACKAGE_REMOVED 事件及包名身份映射刷新
  * 可被 BroadcastReceiver 和 SystemLogCatcher 共用
  */
 public class PackageEventManager {
@@ -34,8 +34,14 @@ public class PackageEventManager {
      */
     public static boolean isPackageMatched(XcLoggerConfig config, String packageName) {
         if (config == null) return false;
-        String filterPackageStr = config.getFilterPackage();
-        if (filterPackageStr == null || filterPackageStr.equals("all")) return false;
+        if (XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(config.getPackageFilterMode())) {
+            return isPackageMatched(config.getFilterPackageBlacklist(), packageName);
+        }
+        return isPackageMatched(config.getFilterPackage(), packageName);
+    }
+
+    private static boolean isPackageMatched(String filterPackageStr, String packageName) {
+        if (filterPackageStr == null || filterPackageStr.equals("all") || filterPackageStr.trim().isEmpty()) return false;
 
         String[] filterEntries = filterPackageStr.split(",");
         for (String entry : filterEntries) {
@@ -54,7 +60,7 @@ public class PackageEventManager {
     }
 
     /**
-     * 处理包安装事件：重新扫描匹配过滤规则的运行中进程 PID
+     * 处理包安装事件：重新解析匹配过滤规则的 UID 和后备 PID
      */
     public static void handlePackageInstalled(Context context, String packageName) {
         if (context == null || packageName == null || packageName.isEmpty()) return;
@@ -70,7 +76,7 @@ public class PackageEventManager {
             SystemLogCatcher catcher = controller.getLogCatcher();
             if (catcher != null) {
                 catcher.addPackagePids(packageName);
-                recordHistory(context, "Dynamic package PID refresh for: " + packageName);
+                recordHistory(context, "Dynamic package identity refresh for: " + packageName);
             }
         }
     }
@@ -86,13 +92,14 @@ public class PackageEventManager {
             SystemLogCatcher catcher = controller.getLogCatcher();
             if (catcher != null) {
                 catcher.removePackagePids(packageName);
-                recordHistory(context, "Package PID mapping removed for: " + (packageName != null ? packageName : "unknown"));
+                recordHistory(context, "Package identity mapping removed for: "
+                        + (packageName != null ? packageName : "unknown"));
             }
         }
     }
 
     /**
-     * 定时刷新：重新扫描当前运行进程，维护匹配包名的 PID
+     * 定时刷新：维护匹配包名的 UID 和后备 PID
      * 由 SystemLogCatcher.readLogcatOutput 每 10 秒调用一次
      */
     public static int refreshPackagePids(Context context) {
@@ -102,8 +109,11 @@ public class PackageEventManager {
         XcLoggerConfig config = loader.getCurrentConfig();
         if (config == null) return 0;
 
-        String filterStr = config.getFilterPackage();
-        if (filterStr == null || filterStr.equals("all")) return 0;
+        String whitelist = config.getFilterPackage();
+        String blacklist = config.getFilterPackageBlacklist();
+        boolean noWhitelist = whitelist == null || whitelist.equals("all") || whitelist.trim().isEmpty();
+        boolean noBlacklist = blacklist == null || blacklist.trim().isEmpty();
+        if (noWhitelist && noBlacklist) return 0;
 
         try {
             ProcessController controller = ProcessController.getInstance(context);

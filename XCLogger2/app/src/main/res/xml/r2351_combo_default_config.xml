@@ -24,9 +24,10 @@
         <!-- all-No filtering -->
         <tag>all</tag>
         <!-- all-No filtering, D, V, W, E (levels name separated by ,)-->
-        <level>all</level>
+        <level>v</level>
         <!-- all-No filtering -->
         <package_name>all</package_name>
+        <package_filter_mode>whitelist</package_filter_mode>
 
         <!-- Blacklist (optional): elements to exclude from whitelist results -->
         <tag_blacklist></tag_blacklist>

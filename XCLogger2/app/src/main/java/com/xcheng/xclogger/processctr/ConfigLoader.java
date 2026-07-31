@@ -26,7 +26,7 @@ public class ConfigLoader {
     private static final int APK_CONFIG_VERSION = 4;
 
     private static ConfigLoader instance;
-    private XcLoggerConfig currentConfig;
+    private volatile XcLoggerConfig currentConfig;
     private boolean lastInitialAutoStartEnabled;
     private boolean lastLoadInitializedFromXml;
 
@@ -52,36 +52,30 @@ public class ConfigLoader {
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             lastLoadInitializedFromXml = false;
 
-            // 版本陈旧检查：DB 版本 < APK 版本时，用 XML 全量刷新
-            if (db.getDatabaseVersion() < APK_CONFIG_VERSION) {
-                XcLoggerConfig oldConfig = loadFromDatabase(context);
-                ConfigXmlResult result = loadFromXml(context);
-                if (result != null && result.config != null) {
-                    lastInitialAutoStartEnabled = result.initialAutoStartEnabled;
-                    lastLoadInitializedFromXml = true;
-                    currentConfig = result.config;
-
-                    if (db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
-                        db.setDatabaseVersion(APK_CONFIG_VERSION);
-                        String diff = buildConfigDiff(oldConfig, result.config);
-                        Log.i(TAG, "Config upgraded from v" + (APK_CONFIG_VERSION - 1)
-                                + " to v" + APK_CONFIG_VERSION
-                                + ": " + diff);
-                        try {
-                            FileManager fm = new FileManager(context);
-                            fm.appendOperationHistory("Config upgraded from v" + (APK_CONFIG_VERSION - 1)
-                                    + " to v" + APK_CONFIG_VERSION
-                                    + " (" + diff + ")");
-                        } catch (Exception e) {
-                            Log.w(TAG, "Failed to record operation history for config upgrade", e);
-                        }
-                    } else {
-                        Log.e(TAG, "Failed to save config during version upgrade");
+            int storedVersion = db.getDatabaseVersion();
+            if (storedVersion < APK_CONFIG_VERSION
+                    && (db.isConfigInitialized() || db.hasSavedConfig())) {
+                // Existing installations keep every persisted value. loadConfig() supplies the
+                // whitelist mode only when the new key is absent, preserving legacy whitelists.
+                XcLoggerConfig migrated = loadFromDatabase(context);
+                if (migrated != null && db.saveConfig(migrated)) {
+                    db.setConfigInitialized(true);
+                    db.setDatabaseVersion(APK_CONFIG_VERSION);
+                    currentConfig = migrated;
+                    lastInitialAutoStartEnabled = db.loadInitialAutoStartEnabled();
+                    Log.i(TAG, "Config migrated from v" + storedVersion + " to v"
+                            + APK_CONFIG_VERSION + " without replacing existing values");
+                    try {
+                        new FileManager(context).appendOperationHistory(
+                                "Config migrated from v" + storedVersion + " to v"
+                                        + APK_CONFIG_VERSION
+                                        + " (existing values preserved, package mode=whitelist by default)");
+                    } catch (Exception e) {
+                        Log.w(TAG, "Failed to record operation history for config migration", e);
                     }
-                    return result.config;
+                    return migrated;
                 }
-                // XML 解析失败 => fallthrough 到 DB 兜底，不阻塞启动
-                Log.w(TAG, "XML parse failed during version upgrade, falling back to DB");
+                Log.w(TAG, "Config migration failed, falling back to normal database loading");
             }
 
             if (db.isConfigInitialized() || db.hasSavedConfig()) {
@@ -107,6 +101,7 @@ public class ConfigLoader {
                 if (!db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
                     Log.e(TAG, "Failed to commit initial config, using XML config directly");
                 } else {
+                    db.setDatabaseVersion(APK_CONFIG_VERSION);
                     Log.i(TAG, "Config loaded from XML and saved to database");
                     try {
                         FileManager fm = new FileManager(context);
@@ -257,6 +252,10 @@ public class ConfigLoader {
                             markField(validation, tagName);
                             config.setFilterPackage(parser.nextText());
                             break;
+                        case "package_filter_mode":
+                            markField(validation, tagName);
+                            config.setPackageFilterMode(parser.nextText());
+                            break;
                         case "tag_blacklist":
                         case "package_blacklist":
                         case "level_blacklist":
@@ -374,6 +373,9 @@ public class ConfigLoader {
         appendDiff(sb, "filter_tag", old.getFilterTag(), newCfg.getFilterTag());
         appendDiff(sb, "filter_level", old.getFilterLevel(), newCfg.getFilterLevel());
         appendDiff(sb, "filter_package", old.getFilterPackage(), newCfg.getFilterPackage());
+        appendDiff(sb, "filter_package_mode", old.getPackageFilterMode(), newCfg.getPackageFilterMode());
+        appendDiff(sb, "filter_tag_blacklist", old.getFilterTagBlacklist(), newCfg.getFilterTagBlacklist());
+        appendDiff(sb, "filter_package_blacklist", old.getFilterPackageBlacklist(), newCfg.getFilterPackageBlacklist());
         return sb.length() == 0 ? "no effective changes" : sb.toString();
     }
 
@@ -545,7 +547,8 @@ public class ConfigLoader {
         if (config == null) return false;
         boolean hasConfigField = false;
         String[] configFields = {"total_size", "file_size", "buffer_size", "log_dir", "log_period",
-                "tag", "level", "package_name"};
+                "tag", "level", "package_name", "package_filter_mode", "tag_blacklist",
+                "package_blacklist"};
         for (String field : configFields) {
             if (fields.contains(field)) {
                 hasConfigField = true;
@@ -562,9 +565,7 @@ public class ConfigLoader {
     }
 
     private static boolean hasUnsupportedImportFields(XcLoggerConfig config) {
-        return !isEmpty(config.getFilterTagBlacklist())
-                || !isEmpty(config.getFilterPackageBlacklist())
-                || !isEmpty(config.getFilterLevelBlacklist())
+        return !isEmpty(config.getFilterLevelBlacklist())
                 || !isEmpty(config.getFilterContent())
                 || !isEmpty(config.getFilterContentBlacklist());
     }

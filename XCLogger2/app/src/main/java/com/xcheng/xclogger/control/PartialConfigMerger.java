@@ -20,6 +20,12 @@ public class PartialConfigMerger {
         merged.setFilterTag(isNotEmpty(patch.getFilterTag()) ? patch.getFilterTag() : current.getFilterTag());
         merged.setFilterLevel(isNotEmpty(patch.getFilterLevel()) ? patch.getFilterLevel() : current.getFilterLevel());
         merged.setFilterPackage(isNotEmpty(patch.getFilterPackage()) ? patch.getFilterPackage() : current.getFilterPackage());
+        merged.setFilterTagBlacklist(isNotEmpty(patch.getFilterTagBlacklist()) ? patch.getFilterTagBlacklist() : current.getFilterTagBlacklist());
+        merged.setFilterPackageBlacklist(isNotEmpty(patch.getFilterPackageBlacklist()) ? patch.getFilterPackageBlacklist() : current.getFilterPackageBlacklist());
+        merged.setPackageFilterMode(current.getPackageFilterMode());
+        merged.setFilterLevelBlacklist(current.getFilterLevelBlacklist());
+        merged.setFilterContent(current.getFilterContent());
+        merged.setFilterContentBlacklist(current.getFilterContentBlacklist());
         return merged;
     }
 

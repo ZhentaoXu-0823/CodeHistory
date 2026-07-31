@@ -138,10 +138,18 @@
             android:layout_marginBottom="16dp" />
 
         <!-- Filter Package -->
+        <Switch
+            android:id="@+id/switch_package_whitelist_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:paddingVertical="8dp"
+            android:text="Package whitelist mode" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Filter Package"
+            android:text="Package Whitelist"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
         <EditText
@@ -161,10 +169,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Filter Tag Blacklist"
+            android:visibility="gone"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
         <EditText
             android:id="@+id/et_filter_tag_blacklist"
+            android:visibility="gone"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:background="@drawable/bg_rounded_gray"
@@ -177,7 +187,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Filter Package Blacklist"
+            android:text="Package Blacklist"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
         <EditText
@@ -195,10 +205,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Filter Level Blacklist"
+            android:visibility="gone"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
         <EditText
             android:id="@+id/et_filter_level_blacklist"
+            android:visibility="gone"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:background="@drawable/bg_rounded_gray"
@@ -212,10 +224,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Filter Content (Whitelist)"
+            android:visibility="gone"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
         <EditText
             android:id="@+id/et_filter_content"
+            android:visibility="gone"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:background="@drawable/bg_rounded_gray"
@@ -229,10 +243,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Filter Content Blacklist"
+            android:visibility="gone"
             android:textSize="16sp"
             android:layout_marginBottom="4dp" />
         <EditText
             android:id="@+id/et_filter_content_blacklist"
+            android:visibility="gone"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:background="@drawable/bg_rounded_gray"

@@ -2,6 +2,8 @@ package com.xcheng.xclogger.recorder;
 
 import android.content.Context;
 import android.app.ActivityManager;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -18,6 +20,7 @@ import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -26,7 +29,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -51,7 +53,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * - buildTagFilterCommand() - 构建logcat命令的Tag过滤部分
  * - matchesTagFilter(String) - 验证日志行是否匹配Tag过滤
  * - matchesLevelFilter(String) - 验证日志行是否匹配Level过滤
- * - matchesPidFilter(int) - 验证日志行是否匹配PID过滤（包名动态映射到运行中进程）
+ * - matchesPackageFilter(int, int) - 通过稳定 UID 和后备 PID 验证包过滤
  * - parseLogLine(String) - 解析日志行，提取Tag、Level、UID信息
  * - refreshPackagePids() - 根据运行中进程的包名动态维护PID集合
  */
@@ -89,12 +91,18 @@ public class SystemLogCatcher {
     private String[] filterTags;           // Tag数组，用于logcat命令和应用层过滤
     private String filterLevel;             // Level字符串，用于logcat命令和应用层过滤
     private String[] filterPackages;        // Package数组，用于包名匹配
-    private Set<Integer> filterPidSet;      // PID Set，由运行中进程的包名动态映射得到
-    private final Map<String, Set<Integer>> packagePidMap = new ConcurrentHashMap<>();
+    private volatile Set<Integer> filterUidSet = Collections.emptySet();
+    private volatile Set<Integer> filterPidSet = Collections.emptySet();
+    private volatile Map<String, Set<Integer>> packageUidMap = Collections.emptyMap();
+    private volatile Map<String, Set<Integer>> packagePidMap = Collections.emptyMap();
+    private String[] blacklistPackages;
+    private volatile Set<Integer> blacklistPidSet = Collections.emptySet();
+    private volatile Map<String, Set<Integer>> blacklistPackageUidMap = Collections.emptyMap();
+    private volatile Map<String, Set<Integer>> blacklistPackagePidMap = Collections.emptyMap();
 
     // --- White+Black list fields (v1.2.2) ---
     private Set<String>  tagBlacklistSet;
-    private Set<Integer> uidBlacklistSet;
+    private volatile Set<Integer> uidBlacklistSet = Collections.emptySet();
     private Set<Integer> levelBlacklistSet;
     private Set<String>  contentWhitelistSet;
     private Set<String>  contentBlacklistSet;
@@ -109,6 +117,8 @@ public class SystemLogCatcher {
     private static final long PREFIX_REFRESH_INTERVAL_MS = 10000; // 10秒刷新一次
     private long lastPrefixRefreshTime = 0;
     private boolean hasPackageFilter = false; // 是否有包过滤配置
+    private boolean hasPackageBlacklist = false;
+    private String packageFilterMode = XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST;
 
     /**
      * 日志行监听器接口
@@ -438,50 +448,185 @@ public class SystemLogCatcher {
     }
 
     /**
-     * 重新扫描当前运行进程，将匹配配置包名的 PID 放入过滤缓存。
-     * 通过进程包名而不是 UID 匹配，避免多个共享 UID 的包相互串日志。
+     * 将配置包名解析为稳定 UID，并从可见运行进程补充 PID 后备缓存。
      *
      * @return 新缓存中的 PID 数量；查询失败返回 -1
      */
     public int refreshPackagePids() {
-        if (!hasPackageFilter || filterPackages == null || filterPackages.length == 0) {
-            filterPidSet.clear();
-            packagePidMap.clear();
+        if (!hasPackageFilter && !hasPackageBlacklist) {
+            filterUidSet = Collections.emptySet();
+            filterPidSet = Collections.emptySet();
+            uidBlacklistSet = Collections.emptySet();
+            blacklistPidSet = Collections.emptySet();
+            packageUidMap = Collections.emptyMap();
+            packagePidMap = Collections.emptyMap();
+            blacklistPackageUidMap = Collections.emptyMap();
+            blacklistPackagePidMap = Collections.emptyMap();
             return 0;
         }
-        if (activityManager == null) {
-            Log.w(TAG, "ActivityManager is null, cannot refresh package PIDs");
+
+        if (context == null) {
+            Log.w(TAG, "Context is null, cannot resolve package identities");
             return -1;
         }
 
-        List<ActivityManager.RunningAppProcessInfo> runningProcesses = activityManager.getRunningAppProcesses();
-        if (runningProcesses == null) {
-            Log.w(TAG, "Running process list is unavailable");
-            return -1;
+        Map<String, Set<Integer>> refreshedUidMap = new HashMap<>();
+        Map<String, Set<Integer>> refreshedBlacklistUidMap = new HashMap<>();
+        Set<Integer> refreshedUids = new HashSet<>();
+        Set<Integer> refreshedBlacklistUids = new HashSet<>();
+        List<String> unresolvedWhitelist = new ArrayList<>();
+        List<String> unresolvedBlacklist = new ArrayList<>();
+        List<String> sharedUidWhitelist = new ArrayList<>();
+        List<String> sharedUidBlacklist = new ArrayList<>();
+
+        PackageManager packageManager = context.getPackageManager();
+        if (hasPackageFilter) {
+            resolvePackageUids(packageManager, filterPackages, refreshedUidMap,
+                    refreshedUids, unresolvedWhitelist, sharedUidWhitelist);
+        }
+        if (hasPackageBlacklist) {
+            resolvePackageUids(packageManager, blacklistPackages, refreshedBlacklistUidMap,
+                    refreshedBlacklistUids, unresolvedBlacklist, sharedUidBlacklist);
         }
 
         Map<String, Set<Integer>> refreshedMap = new HashMap<>();
-        Set<Integer> refreshedPids = ConcurrentHashMap.newKeySet();
-        for (ActivityManager.RunningAppProcessInfo process : runningProcesses) {
-            if (process == null || process.pid <= 0 || process.pkgList == null) {
-                continue;
-            }
-            for (String packageName : process.pkgList) {
-                if (!isPackageMatched(packageName)) {
+        Map<String, Set<Integer>> refreshedBlacklistMap = new HashMap<>();
+        Set<Integer> refreshedPids = new HashSet<>();
+        Set<Integer> refreshedBlacklistPids = new HashSet<>();
+        List<ActivityManager.RunningAppProcessInfo> runningProcesses = activityManager != null
+                ? activityManager.getRunningAppProcesses() : null;
+        if (runningProcesses == null) {
+            Log.w(TAG, "Running process list is unavailable; UID package filtering remains active");
+        } else {
+            for (ActivityManager.RunningAppProcessInfo process : runningProcesses) {
+                if (process == null || process.pid <= 0 || process.pkgList == null) {
                     continue;
                 }
-                refreshedMap.computeIfAbsent(packageName, key -> ConcurrentHashMap.newKeySet()).add(process.pid);
-                refreshedPids.add(process.pid);
+                for (String packageName : process.pkgList) {
+                    if (hasPackageFilter && isPackageMatched(packageName, filterPackages)) {
+                        refreshedMap.computeIfAbsent(packageName, key -> new HashSet<>())
+                                .add(process.pid);
+                        refreshedPids.add(process.pid);
+                    }
+                    if (hasPackageBlacklist && isPackageMatched(packageName, blacklistPackages)) {
+                        refreshedBlacklistMap.computeIfAbsent(packageName, key -> new HashSet<>())
+                                .add(process.pid);
+                        refreshedBlacklistPids.add(process.pid);
+                    }
+                }
             }
         }
 
-        packagePidMap.clear();
-        packagePidMap.putAll(refreshedMap);
-        filterPidSet.clear();
-        filterPidSet.addAll(refreshedPids);
-        Log.i(TAG, "Package PID cache refreshed: packages=" + packagePidMap.keySet()
-                + ", PIDs=" + filterPidSet);
-        return filterPidSet.size();
+        // Publish complete immutable snapshots so the reader never observes partially refreshed sets.
+        packageUidMap = immutableIdentityMap(refreshedUidMap);
+        filterUidSet = immutableSet(refreshedUids);
+        packagePidMap = immutableIdentityMap(refreshedMap);
+        filterPidSet = immutableSet(refreshedPids);
+        blacklistPackageUidMap = immutableIdentityMap(refreshedBlacklistUidMap);
+        uidBlacklistSet = immutableSet(refreshedBlacklistUids);
+        blacklistPackagePidMap = immutableIdentityMap(refreshedBlacklistMap);
+        blacklistPidSet = immutableSet(refreshedBlacklistPids);
+
+        Log.i(TAG, "Package identity caches refreshed: whitelist=" + packageUidMap.keySet()
+                + ", whitelistUids=" + filterUidSet + ", whitelistPids=" + filterPidSet
+                + ", unresolvedWhitelist=" + unresolvedWhitelist
+                + ", sharedUidWhitelist=" + sharedUidWhitelist + ", blacklist="
+                + blacklistPackageUidMap.keySet() + ", blacklistUids=" + uidBlacklistSet
+                + ", blacklistPids=" + blacklistPidSet + ", unresolvedBlacklist="
+                + unresolvedBlacklist + ", sharedUidBlacklist=" + sharedUidBlacklist);
+        return filterUidSet.size() + filterPidSet.size()
+                + uidBlacklistSet.size() + blacklistPidSet.size();
+    }
+
+    private void resolvePackageUids(
+            PackageManager packageManager,
+            String[] configuredPackages,
+            Map<String, Set<Integer>> resolvedMap,
+            Set<Integer> resolvedUids,
+            List<String> unresolvedEntries,
+            List<String> sharedUidEntries) {
+        if (packageManager == null || configuredPackages == null
+                || configuredPackages.length == 0) {
+            return;
+        }
+
+        List<String> prefixes = new ArrayList<>();
+        for (String entry : configuredPackages) {
+            if (entry.endsWith(".")) {
+                prefixes.add(entry);
+                continue;
+            }
+            try {
+                ApplicationInfo appInfo = packageManager.getApplicationInfo(entry, 0);
+                addResolvedUid(packageManager, configuredPackages, resolvedMap, resolvedUids,
+                        sharedUidEntries, appInfo.packageName, appInfo.uid);
+            } catch (PackageManager.NameNotFoundException e) {
+                unresolvedEntries.add(entry);
+            }
+        }
+
+        if (prefixes.isEmpty()) {
+            return;
+        }
+
+        Set<String> matchedPrefixes = new HashSet<>();
+        List<ApplicationInfo> installedApplications = packageManager.getInstalledApplications(0);
+        for (ApplicationInfo appInfo : installedApplications) {
+            if (appInfo == null || appInfo.packageName == null) continue;
+            for (String prefix : prefixes) {
+                if (appInfo.packageName.startsWith(prefix)) {
+                    addResolvedUid(packageManager, configuredPackages, resolvedMap, resolvedUids,
+                            sharedUidEntries, appInfo.packageName, appInfo.uid);
+                    matchedPrefixes.add(prefix);
+                }
+            }
+        }
+        for (String prefix : prefixes) {
+            if (!matchedPrefixes.contains(prefix)) unresolvedEntries.add(prefix);
+        }
+    }
+
+    private static void addResolvedUid(
+            PackageManager packageManager,
+            String[] configuredPackages,
+            Map<String, Set<Integer>> resolvedMap,
+            Set<Integer> resolvedUids,
+            List<String> sharedUidEntries,
+            String packageName,
+            int uid) {
+        if (uid < 0) return;
+        resolvedMap.computeIfAbsent(packageName, key -> new HashSet<>()).add(uid);
+        if (isUidSafeForConfiguredPackages(packageManager, uid, configuredPackages)) {
+            resolvedUids.add(uid);
+        } else {
+            String diagnostic = packageName + "(uid=" + uid + ")";
+            if (!sharedUidEntries.contains(diagnostic)) sharedUidEntries.add(diagnostic);
+        }
+    }
+
+    private static boolean isUidSafeForConfiguredPackages(
+            PackageManager packageManager, int uid, String[] configuredPackages) {
+        String[] uidPackages = packageManager.getPackagesForUid(uid);
+        if (uidPackages == null || uidPackages.length <= 1) return true;
+        for (String uidPackage : uidPackages) {
+            if (!isPackageMatched(uidPackage, configuredPackages)) return false;
+        }
+        return true;
+    }
+
+    private static Set<Integer> immutableSet(Set<Integer> values) {
+        if (values == null || values.isEmpty()) return Collections.emptySet();
+        return Collections.unmodifiableSet(new HashSet<>(values));
+    }
+
+    private static Map<String, Set<Integer>> immutableIdentityMap(
+            Map<String, Set<Integer>> values) {
+        if (values == null || values.isEmpty()) return Collections.emptyMap();
+        Map<String, Set<Integer>> copy = new HashMap<>();
+        for (Map.Entry<String, Set<Integer>> entry : values.entrySet()) {
+            copy.put(entry.getKey(), immutableSet(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     /** Refresh after a package installation or configuration change. */
@@ -497,19 +642,15 @@ public class SystemLogCatcher {
         if (packageName == null || packageName.isEmpty()) {
             return;
         }
-        packagePidMap.remove(packageName);
-        filterPidSet.clear();
-        for (Set<Integer> pids : packagePidMap.values()) {
-            filterPidSet.addAll(pids);
-        }
-        Log.i(TAG, "Package removed from PID filter: " + packageName + ", PIDs=" + filterPidSet);
+        refreshPackagePids();
+        Log.i(TAG, "Package removed from identity filters: " + packageName);
     }
 
-    private boolean isPackageMatched(String packageName) {
-        if (packageName == null || filterPackages == null) {
+    private static boolean isPackageMatched(String packageName, String[] configuredPackages) {
+        if (packageName == null || configuredPackages == null) {
             return false;
         }
-        for (String entry : filterPackages) {
+        for (String entry : configuredPackages) {
             if (entry.endsWith(".")) {
                 if (packageName.startsWith(entry)) {
                     return true;
@@ -530,16 +671,17 @@ public class SystemLogCatcher {
         return logcatProcess != null && logcatProcess.isAlive();
     }
 
-    /** Refresh the dynamic PID cache through the shared package event manager. */
+    /** Refresh package UID and fallback PID snapshots through the shared package event manager. */
     private void refreshPackagePidSet() {
-        if (!hasPackageFilter) return;
+        if (!hasPackageFilter && !hasPackageBlacklist) return;
         int refreshed = PackageEventManager.refreshPackagePids(context);
         try {
             ProcessController ctrl = ProcessController.getInstance(context);
             if (ctrl != null) {
                 ctrl.recordOperationHistory(refreshed >= 0
-                        ? "Package PID cache refreshed, total " + filterPidSet.size() + " PIDs cached"
-                        : "Package PID cache refresh failed");
+                        ? "Package identity cache refreshed: " + filterUidSet.size()
+                                + " whitelist UIDs, " + filterPidSet.size() + " fallback PIDs"
+                        : "Package identity cache refresh failed");
             }
         } catch (Exception ignore) {}
     }
@@ -552,6 +694,9 @@ public class SystemLogCatcher {
     private void parseAndUpdateFilterConfig(XcLoggerConfig config) {
         Log.d(TAG, "Starting to parse filter config...");
         this.hasPackageFilter = false;
+        this.hasPackageBlacklist = false;
+        this.packageFilterMode = config != null
+                ? config.getPackageFilterMode() : XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST;
 
         // 解析Filter Tag
         if (config != null && config.getFilterTag() != null && !config.getFilterTag().equals("all")) {
@@ -570,6 +715,10 @@ public class SystemLogCatcher {
             Log.d(TAG, "No Filter Tag configured (all)");
         }
 
+        // Retained only as a legacy config field. Package is the sole filter dimension with
+        // mutually exclusive whitelist/blacklist semantics.
+        tagBlacklistSet = Collections.emptySet();
+
         // 解析Filter Level
         if (config != null && config.getFilterLevel() != null && !config.getFilterLevel().equals("all")) {
             filterLevel = config.getFilterLevel().trim().toLowerCase();
@@ -579,10 +728,17 @@ public class SystemLogCatcher {
             Log.d(TAG, "No Filter Level configured (all)");
         }
 
-        // 解析Filter Package并动态查询对应的PID
+        // 解析Filter Package并解析稳定 UID；运行中 PID 仅作为兼容后备。
         filterPackages = new String[0];
-        filterPidSet = ConcurrentHashMap.newKeySet();
-        packagePidMap.clear();
+        filterUidSet = Collections.emptySet();
+        filterPidSet = Collections.emptySet();
+        blacklistPackages = new String[0];
+        uidBlacklistSet = Collections.emptySet();
+        blacklistPidSet = Collections.emptySet();
+        packageUidMap = Collections.emptyMap();
+        packagePidMap = Collections.emptyMap();
+        blacklistPackageUidMap = Collections.emptyMap();
+        blacklistPackagePidMap = Collections.emptyMap();
 
         if (config != null && config.getFilterPackage() != null && !config.getFilterPackage().equals("all")) {
             String filterPackageStr = config.getFilterPackage();
@@ -597,23 +753,39 @@ public class SystemLogCatcher {
                     packageList.add(trimmed);
                     Log.d(TAG, "Processing package: " + trimmed);
                     if (trimmed.endsWith(".")) {
-                        this.hasPackageFilter = true;
                         Log.d(TAG, "Package entry ends with '.', treating as prefix: " + trimmed);
-                    } else {
-                        this.hasPackageFilter = true;
                     }
                 }
             }
 
             filterPackages = packageList.toArray(new String[0]);
-            refreshPackagePids();
+            hasPackageFilter = XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST.equals(packageFilterMode)
+                    && filterPackages.length > 0;
         } else {
             Log.d(TAG, "No Filter Package configured (all)");
         }
 
+        if (config != null && config.getFilterPackageBlacklist() != null
+                && !config.getFilterPackageBlacklist().trim().isEmpty()) {
+            List<String> packageBlacklist = new ArrayList<>();
+            for (String pkg : config.getFilterPackageBlacklist().split(",")) {
+                String trimmed = pkg.trim();
+                if (!trimmed.isEmpty()) packageBlacklist.add(trimmed);
+            }
+            blacklistPackages = packageBlacklist.toArray(new String[0]);
+            hasPackageBlacklist = XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(packageFilterMode)
+                    && blacklistPackages.length > 0;
+        }
+        if (hasPackageFilter || hasPackageBlacklist) refreshPackagePids();
+
         Log.i(TAG, "Filter config parsed - Tags: " + Arrays.toString(filterTags) +
-                ", Level: " + filterLevel + ", Packages: " + Arrays.toString(filterPackages) +
-                ", PIDs: " + filterPidSet);
+                ", Level: " + filterLevel + ", PackageMode: " + packageFilterMode
+                + ", Packages: " + Arrays.toString(filterPackages) +
+                ", UIDs: " + filterUidSet + ", fallbackPIDs: " + filterPidSet
+                + ", TagBlacklist: " + tagBlacklistSet
+                + ", PackageBlacklist: " + Arrays.toString(blacklistPackages)
+                + ", BlacklistUIDs: " + uidBlacklistSet
+                + ", BlacklistFallbackPIDs: " + blacklistPidSet);
     }
 
     /**
@@ -622,20 +794,16 @@ public class SystemLogCatcher {
      * @param command 参数列表；每个 filter spec 独立传参，禁止 shell 解释
      */
     private void appendTagFilterCommand(List<String> command) {
+        String nativeLevel = filterLevel != null ? filterLevel.toUpperCase(Locale.US) : "V";
+
         if (filterTags == null || filterTags.length == 0) {
-            return;
-        }
+            command.add("*:" + nativeLevel);
+        } else {
+            // 使用严格过滤模式：先屏蔽所有，再启用需要的tag
+            command.add("*:S");
 
-        // 使用严格过滤模式：先屏蔽所有，再启用需要的tag
-        command.add("*:S");
-
-        // 为每个tag添加level过滤
-        for (String tag : filterTags) {
-            if (filterLevel != null) {
-                command.add(tag + ":" + filterLevel.toUpperCase());
-            } else {
-                // 如果没有level，使用V级别（最低级别，输出所有）
-                command.add(tag + ":V");
+            for (String tag : filterTags) {
+                command.add(tag + ":" + nativeLevel);
             }
         }
 
@@ -697,33 +865,39 @@ public class SystemLogCatcher {
     }
 
     /**
-     * 验证日志行是否匹配UID过滤（应用层过滤）
-     * 通过Package查询到的UID进行过滤
-     * @param pid 日志行的PID
+     * 验证日志行是否匹配包过滤（应用层过滤）。
+     * UID 是主判据；PID 用于 UID 无法解析或共享 UID 需要进一步收敛的兼容场景。
      * @return 是否匹配
      */
-    private boolean matchesPidFilter(int pid) {
-        if (filterPackages == null || filterPackages.length == 0) {
-            return true; // 没有包过滤，全部通过
+    private boolean matchesPackageMode(int uid, int pid) {
+        if (XcLoggerConfig.PACKAGE_FILTER_MODE_BLACKLIST.equals(packageFilterMode)) {
+            return !matchesIdentity(uidBlacklistSet, blacklistPidSet, uid, pid);
         }
-        // 使用Set快速查找（O(1)时间复杂度）。没有匹配到运行中 PID 时全部拒绝。
-        boolean matched = filterPidSet != null && filterPidSet.contains(pid);
-        return matched;
+        if (filterPackages == null || filterPackages.length == 0) return true;
+        return matchesIdentity(filterUidSet, filterPidSet, uid, pid);
+    }
+
+    static boolean matchesIdentity(Set<Integer> uids, Set<Integer> pids, int uid, int pid) {
+        boolean uidMatched = uid >= 0 && uids != null && uids.contains(uid);
+        boolean pidMatched = pid > 0 && pids != null && pids.contains(pid);
+        return uidMatched || pidMatched;
     }
 
     /**
      * 解析日志行，提取Tag、Level、UID信息
-     * 日志格式（threadtime,uid）：MM-DD HH:MM:SS.mmm PID TID UID LEVEL TAG: message
+     * 日志格式（threadtime,uid）：MM-DD HH:MM:SS.mmm UID PID TID LEVEL TAG: message
      * @param line 日志行
      * @return LogLineInfo对象，包含解析后的信息
      */
-    private static class LogLineInfo {
+    static class LogLineInfo {
         String tag;
         String level;
+        int uid = -1;
         int pid = -1;
+        int tid = -1;
     }
 
-    private LogLineInfo parseLogLine(String line) {
+    static LogLineInfo parseLogLine(String line) {
         LogLineInfo info = new LogLineInfo();
 
         if (line == null || line.trim().isEmpty()) {
@@ -731,16 +905,12 @@ public class SystemLogCatcher {
         }
 
         try {
-            String[] parts = line.split("\\s+");
+            String[] parts = line.trim().split("\\s+");
 
             if (parts.length >= 7) {
-                if (filterPackages != null && filterPackages.length > 0) {
-                    String pidPart = parts[2];
-                    if (pidPart != null && pidPart.matches("\\d+")) {
-                        info.pid = Integer.parseInt(pidPart);
-                    }
-                }
-
+                info.uid = parseUid(parts[2]);
+                info.pid = parseInteger(parts[3]);
+                info.tid = parseInteger(parts[4]);
                 info.level = parts[5];
 
                 String tagPart = parts[6];
@@ -754,6 +924,25 @@ public class SystemLogCatcher {
         }
 
         return info;
+    }
+
+    private static int parseUid(String value) {
+        int numericUid = parseInteger(value);
+        if (numericUid >= 0) return numericUid;
+        try {
+            return android.os.Process.getUidForName(value);
+        } catch (RuntimeException ignored) {
+            return -1;
+        }
+    }
+
+    private static int parseInteger(String value) {
+        if (value == null || !value.matches("\\d+")) return -1;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
     }
 
     /**
@@ -832,14 +1021,15 @@ public class SystemLogCatcher {
             int filteredCount = 0;
             int tagFilteredCount = 0;
             int levelFilteredCount = 0;
-            int uidFilteredCount = 0;
+            int packageFilteredCount = 0;
             int savedCount = 0;
             long lastReadTime = System.currentTimeMillis();
 
             Log.i(TAG, "Starting to read logcat output...");
             Log.i(TAG, "Process isAlive: " + (logcatProcess != null ? logcatProcess.isAlive() : "null"));
             Log.i(TAG, "Filter config - Tags: " + Arrays.toString(filterTags) +
-                    ", Level: " + filterLevel + ", PIDs: " + filterPidSet);
+                    ", Level: " + filterLevel + ", UIDs: " + filterUidSet
+                    + ", fallbackPIDs: " + filterPidSet);
 
             while (running.get()) {
                 // 检查进程是否还存活
@@ -873,7 +1063,7 @@ public class SystemLogCatcher {
                 if (lineCount % 1000 == 0) {
                     Log.d(TAG, "Read " + lineCount + " lines, filtered: " + filteredCount +
                             " (tag:" + tagFilteredCount + ", level:" + levelFilteredCount +
-                            ", uid:" + uidFilteredCount + "), saved: " + savedCount +
+                            ", package:" + packageFilteredCount + "), saved: " + savedCount +
                             ", total bytes: " + totalBytesRead.get());
                 }
 
@@ -881,7 +1071,8 @@ public class SystemLogCatcher {
                 LogLineInfo logInfo = parseLogLine(line);
 
                 // 定时刷新前缀匹配的 UID（仅当有前缀配置时生效）
-                if (filterPackages != null && System.currentTimeMillis() - lastPrefixRefreshTime > PREFIX_REFRESH_INTERVAL_MS) {
+                if ((hasPackageFilter || hasPackageBlacklist)
+                        && System.currentTimeMillis() - lastPrefixRefreshTime > PREFIX_REFRESH_INTERVAL_MS) {
                     refreshPackagePidSet();
                     lastPrefixRefreshTime = System.currentTimeMillis();
                 }
@@ -891,18 +1082,20 @@ public class SystemLogCatcher {
                 boolean isCritical = FilterPipeline.CRITICAL_TAGS.contains(logInfo.tag);
                 boolean tagMatch = matchesTagFilter(logInfo.tag);
                 boolean levelMatch = matchesLevelFilter(logInfo.level);
-                boolean pidMatch = matchesPidFilter(logInfo.pid);
+                boolean packageMatch = matchesPackageMode(logInfo.uid, logInfo.pid);
 
                 // 调试日志：前10行详细记录过滤过程
                 if (lineCount <= 10) {
-                    Log.d(TAG, "Line " + lineCount + " - PID: " + logInfo.pid +
+                    Log.d(TAG, "Line " + lineCount + " - UID: " + logInfo.uid
+                            + ", PID: " + logInfo.pid + ", TID: " + logInfo.tid +
                             ", Level: " + logInfo.level + ", Tag: " + logInfo.tag +
                             " | TagMatch: " + tagMatch + ", LevelMatch: " + levelMatch +
-                            ", PidMatch: " + pidMatch);
+                            ", PackageMatch: " + packageMatch
+                            + ", PackageMode: " + packageFilterMode);
                 }
 
                 // 全部通过才保留（崩溃日志跳过 UID 检查）
-                if (isCritical || (tagMatch && levelMatch && pidMatch)) {
+                if (isCritical || (tagMatch && levelMatch && packageMatch)) {
                     // 匹配所有过滤条件，保留该行
                     savedCount++;
                     byte[] lineBytes = line.getBytes();
@@ -924,12 +1117,13 @@ public class SystemLogCatcher {
                     filteredCount++;
                     if (!tagMatch) tagFilteredCount++;
                     if (!levelMatch) levelFilteredCount++;
-                    if (!pidMatch) uidFilteredCount++;
+                    if (!packageMatch) packageFilteredCount++;
 
                     // 调试日志：前10行详细记录为什么被过滤
                     if (lineCount <= 10) {
                         Log.d(TAG, "Line " + lineCount + " filtered - TagMatch: " + tagMatch +
-                                ", LevelMatch: " + levelMatch + ", PidMatch: " + pidMatch);
+                                ", LevelMatch: " + levelMatch + ", PackageMatch: " + packageMatch
+                                + ", PackageMode: " + packageFilterMode);
                     }
                 }
 
@@ -942,7 +1136,7 @@ public class SystemLogCatcher {
 
             Log.i(TAG, "Finished reading logcat output. Total lines: " + lineCount +
                     ", filtered: " + filteredCount + " (tag:" + tagFilteredCount +
-                    ", level:" + levelFilteredCount + ", uid:" + uidFilteredCount +
+                    ", level:" + levelFilteredCount + ", package:" + packageFilteredCount +
                     "), saved: " + savedCount + ", total bytes: " + totalBytesRead.get());
 
             if (lineCount == 0) {
@@ -953,7 +1147,8 @@ public class SystemLogCatcher {
             } else if (savedCount == 0 && lineCount > 0) {
                 Log.e(TAG, "WARNING: Read " + lineCount + " lines but none were saved! Filter may be too strict.");
                 Log.e(TAG, "Filter config - Tags: " + Arrays.toString(filterTags) +
-                        ", Level: " + filterLevel + ", PIDs: " + filterPidSet);
+                        ", Level: " + filterLevel + ", UIDs: " + filterUidSet
+                        + ", fallbackPIDs: " + filterPidSet);
             }
 
         } catch (IOException e) {

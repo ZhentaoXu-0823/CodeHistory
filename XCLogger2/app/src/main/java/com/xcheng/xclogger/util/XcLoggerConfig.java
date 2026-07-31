@@ -4,6 +4,8 @@ import android.os.Parcel;
 import android.os.Parcelable;
 
 public class XcLoggerConfig implements Parcelable {
+	public static final String PACKAGE_FILTER_MODE_WHITELIST = "whitelist";
+	public static final String PACKAGE_FILTER_MODE_BLACKLIST = "blacklist";
 	private int totalSizeMb;
 	private int fileSizeMb;
 	private int bufferSizeBytes;
@@ -17,6 +19,8 @@ public class XcLoggerConfig implements Parcelable {
 	private String filterLevelBlacklist;
 	private String filterContent;
 	private String filterContentBlacklist;
+	// Internal field; excluded from the legacy Parcelable layout for old AAR compatibility.
+	private String packageFilterMode = PACKAGE_FILTER_MODE_WHITELIST;
 
 	public XcLoggerConfig() {}
 
@@ -90,4 +94,12 @@ public class XcLoggerConfig implements Parcelable {
 	public void setFilterContent(String v) { this.filterContent = v; }
 	public String getFilterContentBlacklist() { return filterContentBlacklist; }
 	public void setFilterContentBlacklist(String v) { this.filterContentBlacklist = v; }
+	public String getPackageFilterMode() {
+		return PACKAGE_FILTER_MODE_BLACKLIST.equals(packageFilterMode)
+				? PACKAGE_FILTER_MODE_BLACKLIST : PACKAGE_FILTER_MODE_WHITELIST;
+	}
+	public void setPackageFilterMode(String value) {
+		packageFilterMode = PACKAGE_FILTER_MODE_BLACKLIST.equalsIgnoreCase(value)
+				? PACKAGE_FILTER_MODE_BLACKLIST : PACKAGE_FILTER_MODE_WHITELIST;
+	}
 }
