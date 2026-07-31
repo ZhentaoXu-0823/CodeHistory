@@ -1,0 +1,62 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.xcheng.xcloggerstressagent'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId 'com.xcheng.xcloggertestdemo'
+        minSdk 30
+        targetSdk 33
+        versionCode 1
+        versionName '1.0'
+    }
+
+    flavorDimensions 'instance'
+    productFlavors {
+        fork1 {
+            dimension 'instance'
+            applicationIdSuffix '.fork1'
+            resValue 'string', 'app_name', 'XCLogger Stress Fork 1'
+            resValue 'string', 'stress_instance_id', 'fork1'
+        }
+        fork2 {
+            dimension 'instance'
+            applicationIdSuffix '.fork2'
+            resValue 'string', 'app_name', 'XCLogger Stress Fork 2'
+            resValue 'string', 'stress_instance_id', 'fork2'
+        }
+        fork3 {
+            dimension 'instance'
+            applicationIdSuffix '.fork3'
+            resValue 'string', 'app_name', 'XCLogger Stress Fork 3'
+            resValue 'string', 'stress_instance_id', 'fork3'
+        }
+        fork4 {
+            dimension 'instance'
+            applicationIdSuffix '.fork4'
+            resValue 'string', 'app_name', 'XCLogger Stress Fork 4'
+            resValue 'string', 'stress_instance_id', 'fork4'
+        }
+        fork5 {
+            dimension 'instance'
+            applicationIdSuffix '.fork5'
+            resValue 'string', 'app_name', 'XCLogger Stress Fork 5'
+            resValue 'string', 'stress_instance_id', 'fork5'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}

@@ -2,3 +2,23 @@
 plugins {
 id 'com.android.application' version '8.1.3' apply false
 }
+
+tasks.register('assembleStressFleetDebug', Sync) {
+    group = 'build'
+    description = 'Builds and collects the controller APK plus fork1-fork5 stress APKs.'
+    dependsOn ':app:assembleDebug', ':stress-agent:assembleDebug'
+
+    into layout.buildDirectory.dir('outputs/stress-fleet/debug')
+
+    from('app/build/outputs/apk/debug') {
+        include '*.apk'
+        rename { 'XCLoggerTestDemo-debug.apk' }
+    }
+
+    (1..5).each { index ->
+        from("stress-agent/build/outputs/apk/fork${index}/debug") {
+            include '*.apk'
+            rename { "XCLoggerStress-fork${index}-debug.apk" }
+        }
+    }
+}

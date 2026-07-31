@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">XcLoggerTestDemo</string>
+    <string-array name="target_packages">
+        <item>com.xcheng.xclogger</item>
+        <item>com.ko.xclogger</item>
+    </string-array>
+</resources>

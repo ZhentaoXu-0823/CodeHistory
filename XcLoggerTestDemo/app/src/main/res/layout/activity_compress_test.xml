@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView android:text="Compression Test"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textSize="16sp" android:textStyle="bold" />
+
+    <TextView android:id="@+id/tv_compress_state"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Status: IDLE" android:textSize="14sp"
+        android:layout_marginTop="4dp" android:textColor="#FF0000FF" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+        <Button android:id="@+id/btn_compress_full" android:text="FULL"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        <Button android:id="@+id/btn_compress_range" android:text="RANGE"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        <Button android:id="@+id/btn_compress_status" android:text="STATUS"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+        <TextView android:text="Start:" android:layout_width="40dp" android:layout_height="wrap_content" />
+        <EditText android:id="@+id/et_start_time" android:text="20260701000000"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:inputType="number" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="2dp">
+        <TextView android:text="End:" android:layout_width="40dp" android:layout_height="wrap_content" />
+        <EditText android:id="@+id/et_end_time" android:text="20260731235959"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:inputType="number" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+        <Button android:id="@+id/btn_fetch_downloads" android:text="FETCH DOWNLOADS"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        <Button android:id="@+id/btn_fetch_app_dir" android:text="FETCH APP DIR"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="2dp">
+        <Button android:id="@+id/btn_upload_ok" android:text="REPORT OK"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        <Button android:id="@+id/btn_upload_fail" android:text="REPORT FAIL"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="2dp">
+        <Button android:id="@+id/btn_compress_cancel" android:text="CANCEL"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#FFCCCCCC" android:layout_marginTop="8dp" />
+
+    <ScrollView android:id="@+id/sv_compress_log"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <TextView android:id="@+id/tv_compress_log"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textSize="11sp" android:fontFamily="monospace"
+            android:text="Click FULL or RANGE to trigger compression" />
+    </ScrollView>
+</LinearLayout>

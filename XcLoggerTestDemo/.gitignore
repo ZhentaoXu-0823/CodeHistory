@@ -7,8 +7,14 @@
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
+/.idea/
 .DS_Store
 /build
+/app/build/
+/stress-agent/build/
+/delivery/
+/app/xclogger_aar/
+/*.apk
 /captures
 .externalNativeBuild
 .cxx
