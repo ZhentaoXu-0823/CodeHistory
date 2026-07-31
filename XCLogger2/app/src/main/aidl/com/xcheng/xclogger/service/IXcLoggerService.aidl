@@ -2,6 +2,9 @@ package com.xcheng.xclogger.service;
 
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.service.IXcLoggerListener;
+import com.xcheng.xclogger.service.IXcLoggerConfigUpdateCallback;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdate;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdateV3;
 import android.os.ParcelFileDescriptor;
 
 interface IXcLoggerService {
@@ -27,4 +30,14 @@ interface IXcLoggerService {
     void unregisterListener(IXcLoggerListener listener);
 
     ParcelFileDescriptor getLogZip();
+
+    // V2 methods are append-only to preserve transaction codes used by old AAR clients.
+    int getApiVersion();
+    oneway void updateConfigurationV2(in XcLoggerConfigUpdate update,
+            IXcLoggerConfigUpdateCallback callback);
+
+    // API 3 methods are append-only; API 1/2 transaction codes remain unchanged.
+    String getPackageFilterMode();
+    oneway void updateConfigurationV3(in XcLoggerConfigUpdateV3 update,
+            IXcLoggerConfigUpdateCallback callback);
 }

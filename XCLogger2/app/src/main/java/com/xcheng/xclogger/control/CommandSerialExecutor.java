@@ -7,6 +7,9 @@ import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
 import com.xcheng.xclogger.util.XcLoggerConfig;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdate;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdateV3;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdateResult;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -15,12 +18,89 @@ import java.util.concurrent.Executors;
 public class CommandSerialExecutor {
     private static final String TAG = "CommandSerialExecutor";
     public interface ResultCallback { void onResult(ControlResult result); }
+    public interface ConfigUpdateCallback { void onResult(XcLoggerConfigUpdateResult result); }
     private static CommandSerialExecutor instance;
     private final ExecutorService singleExecutor = Executors.newSingleThreadExecutor();
     private final PartialConfigMerger configMerger = new PartialConfigMerger();
+    private final ConfigUpdateApplier configUpdateApplier = new ConfigUpdateApplier();
     private CommandSerialExecutor() {}
     public static synchronized CommandSerialExecutor getInstance() { if (instance == null) instance = new CommandSerialExecutor(); return instance; }
     public void submit(Context context, ControlRequest request, ResultCallback callback) { singleExecutor.execute(() -> { ControlResult result = executeInternal(context, request); if (callback != null) callback.onResult(result); }); }
+
+    public void submitConfigurationUpdate(Context context, XcLoggerConfigUpdate update,
+                                          ConfigUpdateCallback callback) {
+        singleExecutor.execute(() -> {
+            XcLoggerConfigUpdateResult result = executeConfigurationUpdate(context, update);
+            if (callback != null) callback.onResult(result);
+        });
+    }
+
+    public void submitConfigurationUpdateV3(Context context, XcLoggerConfigUpdateV3 update,
+                                            ConfigUpdateCallback callback) {
+        singleExecutor.execute(() -> {
+            XcLoggerConfigUpdateResult result = executeConfigurationUpdateV3(context, update);
+            if (callback != null) callback.onResult(result);
+        });
+    }
+
+    private XcLoggerConfigUpdateResult executeConfigurationUpdate(Context context,
+                                                                   XcLoggerConfigUpdate update) {
+        return executeConfigurationUpdate(context, update, null, "aidl:config_v2");
+    }
+
+    private XcLoggerConfigUpdateResult executeConfigurationUpdateV3(
+            Context context, XcLoggerConfigUpdateV3 updateV3) {
+        XcLoggerConfigUpdate baseUpdate = updateV3 != null ? updateV3.getBaseUpdate() : null;
+        if (baseUpdate == null) baseUpdate = new XcLoggerConfigUpdate();
+        String mode = updateV3 != null ? updateV3.getPackageFilterMode() : null;
+        return executeConfigurationUpdate(context, baseUpdate, mode, "aidl:config_v3");
+    }
+
+    private XcLoggerConfigUpdateResult executeConfigurationUpdate(
+            Context context, XcLoggerConfigUpdate update, String packageFilterMode,
+            String restartSource) {
+        String requestId = update != null ? update.getRequestId() : null;
+        try {
+            XcLoggerConfig current = ConfigLoader.getInstance().getCurrentConfig();
+            if (current == null) current = ConfigLoader.getInstance().load(context);
+            ConfigUpdateApplier.ApplyResult applied =
+                    configUpdateApplier.apply(current, update, packageFilterMode);
+            if (applied.changedFields.isEmpty()) {
+                return new XcLoggerConfigUpdateResult(requestId, XcLoggerConfigUpdateResult.NO_CHANGES,
+                        "No effective changes", "", false);
+            }
+
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+            boolean wasRunning = db.loadRunningState();
+            if (!ConfigLoader.getInstance().updateConfig(context, applied.config)) {
+                return new XcLoggerConfigUpdateResult(requestId, XcLoggerConfigUpdateResult.PERSIST_FAILED,
+                        "Configuration persistence failed", String.join(",", applied.changedFields), false);
+            }
+
+            boolean restarted = false;
+            if (wasRunning) {
+                try {
+                    LogServiceController.restartService(context, restartSource);
+                    restarted = true;
+                } catch (Exception restartError) {
+                    Log.e(TAG, "Configuration applied but log service restart failed", restartError);
+                    return new XcLoggerConfigUpdateResult(requestId,
+                            XcLoggerConfigUpdateResult.APPLIED_RESTART_FAILED,
+                            "Configuration applied, but log service restart failed",
+                            String.join(",", applied.changedFields), false);
+                }
+            }
+            return new XcLoggerConfigUpdateResult(requestId, XcLoggerConfigUpdateResult.SUCCESS,
+                    "Configuration updated", String.join(",", applied.changedFields), restarted);
+        } catch (IllegalArgumentException e) {
+            return new XcLoggerConfigUpdateResult(requestId, XcLoggerConfigUpdateResult.INVALID_ARGUMENT,
+                    e.getMessage(), "", false);
+        } catch (Exception e) {
+            Log.e(TAG, "V2 configuration update failed", e);
+            return new XcLoggerConfigUpdateResult(requestId, XcLoggerConfigUpdateResult.INTERNAL_ERROR,
+                    e.getMessage() == null ? "Configuration update failed" : e.getMessage(), "", false);
+        }
+    }
 
     private ControlResult executeInternal(Context context, ControlRequest request) {
         ProcessController controller = ProcessController.getInstance(context);
@@ -104,12 +184,12 @@ public class CommandSerialExecutor {
         if (controller != null) {
             controller.recordOperationHistory("Config update diff: " + buildConfigDiff(current, merged));
         }
+        if ("no effective changes".equals(buildConfigDiff(current, merged))) return;
         boolean wasRunning = db.loadRunningState();
-        if (wasRunning) LogServiceController.stopLogService(context, request.getChannel() + ":" + request.getResolvedSource() + ":update_config_stop");
         if (!ConfigLoader.getInstance().updateConfig(context, merged)) {
             throw new IllegalStateException("config persistence failed");
         }
-        if (wasRunning) LogServiceController.startLogService(context, request.getChannel() + ":" + request.getResolvedSource() + ":update_config_start");
+        if (wasRunning) LogServiceController.restartService(context, request.getChannel() + ":" + request.getResolvedSource() + ":update_config_restart");
     }
 
     private String buildConfigDiff(XcLoggerConfig oldConfig, XcLoggerConfig newConfig) {
@@ -123,6 +203,9 @@ public class CommandSerialExecutor {
         appendStringDiff(diff, "filter_tag", oldConfig.getFilterTag(), newConfig.getFilterTag());
         appendStringDiff(diff, "filter_level", oldConfig.getFilterLevel(), newConfig.getFilterLevel());
         appendStringDiff(diff, "filter_package", oldConfig.getFilterPackage(), newConfig.getFilterPackage());
+        appendStringDiff(diff, "filter_package_mode", oldConfig.getPackageFilterMode(), newConfig.getPackageFilterMode());
+        appendStringDiff(diff, "filter_tag_blacklist", oldConfig.getFilterTagBlacklist(), newConfig.getFilterTagBlacklist());
+        appendStringDiff(diff, "filter_package_blacklist", oldConfig.getFilterPackageBlacklist(), newConfig.getFilterPackageBlacklist());
         return diff.length() == 0 ? "no effective changes" : diff.toString();
     }
 

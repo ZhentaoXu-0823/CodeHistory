@@ -20,6 +20,9 @@ import com.xcheng.xclogger.control.SourceResolver;
 import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.ConfigLoader;
 import com.xcheng.xclogger.util.XcLoggerConfig;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdate;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdateV3;
+import com.xcheng.xclogger.util.XcLoggerConfigUpdateResult;
 import com.xcheng.xclogger.util.XcLoggerDatabase;
 
 public class RemoteBindService extends Service {
@@ -150,6 +153,46 @@ public class RemoteBindService extends Service {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public int getApiVersion() {
+            return 3;
+        }
+
+        @Override
+        public void updateConfigurationV2(XcLoggerConfigUpdate update,
+                                          IXcLoggerConfigUpdateCallback callback) {
+            CommandSerialExecutor.getInstance().submitConfigurationUpdate(
+                    getApplicationContext(), update, result -> {
+                        if (callback == null) return;
+                        try {
+                            callback.onComplete(result);
+                        } catch (RemoteException e) {
+                            Log.w(TAG, "Configuration V2 callback failed", e);
+                        }
+                    });
+        }
+
+        @Override
+        public String getPackageFilterMode() {
+            XcLoggerConfig current = ConfigLoader.current();
+            return current != null ? current.getPackageFilterMode()
+                    : XcLoggerConfig.PACKAGE_FILTER_MODE_WHITELIST;
+        }
+
+        @Override
+        public void updateConfigurationV3(XcLoggerConfigUpdateV3 update,
+                                          IXcLoggerConfigUpdateCallback callback) {
+            CommandSerialExecutor.getInstance().submitConfigurationUpdateV3(
+                    getApplicationContext(), update, result -> {
+                        if (callback == null) return;
+                        try {
+                            callback.onComplete(result);
+                        } catch (RemoteException e) {
+                            Log.w(TAG, "Configuration V3 callback failed", e);
+                        }
+                    });
         }
 
         @Override
