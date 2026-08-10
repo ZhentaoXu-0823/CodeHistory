@@ -1,8 +1,8 @@
 # XCLogger AAR API Reference
 
-> **Version**: v1.3.6 / Configuration Protocol API 4
-> **Updated**: 2026-07-31
-> **Platform**: Android 10 (API 29) or later
+> **Version**: v2.0.0 / Configuration Protocol API 4
+> **Updated**: 2026-08-11
+> **Platform**: Android 6.0 (API 23) or later
 
 {Global maintenance rule: This document describes only callable capabilities in the current AAR. Add new APIs to Quick Reference first, then update the portable examples and notes. Never mix compatibility APIs with recommended APIs. Keep this document structurally and behaviorally aligned with the Chinese version.}
 
@@ -19,7 +19,7 @@ The prebuilt AAR provides an AIDL API. After connecting to XCLogger installed on
 | Communication | Android AIDL service binding |
 | AAR package | `xclogger-api-release.aar` |
 | Service action | `com.xcheng.xclogger.REMOTE_BIND` |
-| Minimum SDK | API 29 |
+| Minimum SDK | API 23 |
 
 > **Access note**: Other apps can currently connect to the XCLogger service without an additional binding permission. Always set the real XCLogger package name in the Intent so it cannot connect to the wrong app. A successful connection only means the service exists; it does not verify the caller. Production builds should add a signature permission or caller-UID check.
 
@@ -194,6 +194,8 @@ public final class MainActivity extends Activity {
 
 {Maintenance rule: Keep API 4 methods in the upper table. Put methods retained only for old clients in the lower table and mark them as not recommended.}
 
+`IXcLoggerService` currently contains 16 methods. The tables enumerate every method individually instead of merging alternate entry points for the same capability.
+
 #### Current and Recommended
 
 | Complete signature | Parameters | Return value and behavior |
@@ -204,12 +206,12 @@ public final class MainActivity extends Activity {
 | `XcLoggerConfig getConfiguration()` | None | Returns a configuration copy; may be `null` before initialization |
 | `boolean startLogging()` | None | Starts capture; returns the current control outcome |
 | `boolean stopLogging()` | None | Stops capture; returns the current control outcome |
-| `boolean isRunning()` | None | Returns the persisted capture state |
+| `boolean isRunning()` | None | Returns the actual capture state (the Service exists and the collector is running) |
 | `boolean triggerCompression()` | None | Requests no-range compression; `true` means accepted, not completed |
 | `boolean triggerCompressionWithRange(String startTime, String endTime)` | Ordered `yyyyMMddHHmmss` boundaries; currently provide both | Requests range compression; use callback/status for completion |
 | `String getCompressStatus()` | None | Returns semicolon-delimited `state`, `zip_files`, `retry_count`, and `max_retry_count` |
 | `ParcelFileDescriptor getLogZip()` | None | Available only in `WAIT_UPLOAD_RESULT`; pipes the first pending ZIP |
-| `boolean reportUploadResult(boolean success)` | Pass `true` after every required ZIP uploads successfully; pass `false` on failure | `true` deletes pending ZIPs; the third consecutive failure also deletes them |
+| `boolean reportUploadResult(boolean success)` | Pass `true` after every required ZIP uploads successfully; pass `false` on failure | `true` deletes pending ZIPs and returns `true`; a `false` report updates retry state but currently returns `false`, so verify with `getCompressStatus()`; the third failure deletes ZIPs |
 | `boolean cancelCompressTask()` | None | Cancels active compression or clears a pending-upload task |
 | `void registerListener(IXcLoggerListener listener)` | Callback object | Receives capture, operation, and compression results |
 | `void unregisterListener(IXcLoggerListener listener)` | The same callback object used to register | Unregister before destroying the Activity or Service |
@@ -218,7 +220,7 @@ public final class MainActivity extends Activity {
 
 | Complete signature | Compatibility purpose | Why not recommended |
 |---|---|---|
-| ~~`boolean updateConfigurationPartial(XcLoggerConfig config)`~~ | Supports non-empty setting changes from old clients | Does not report which fields changed and cannot add/remove list items while changing package mode; use `XcLoggerConfigUpdater` |
+| ~~`boolean updateConfigurationPartial(XcLoggerConfig config)`~~ | Supports positive-integer/non-empty-string patches from old clients; buffer is rounded up to 512 and capped at 4096 | Returns only a synchronous boolean; package mode and tag/level/content denylist fields remain unchanged; cannot express list add/remove; use `XcLoggerConfigUpdater` |
 
 ### 2.3 Callback Registration and Parameters
 
@@ -411,6 +413,16 @@ Package mode is not stored in the old Parcelable. A Parcelable is Android's fixe
 | ~~`filterContent`~~ | Historical data compatibility | No content filtering |
 | ~~`filterContentBlacklist`~~ | Historical data compatibility | No content filtering |
 
+#### Public AAR Data Models
+
+| Type | Public contract | Usage requirement |
+|---|---|---|
+| `XcLoggerConfig` | No-argument constructor; getters/setters for 13 fields; Parcelable `CREATOR`, `describeContents()`, and `writeToParcel()` | Use only for configuration reads and compatibility `updateConfigurationPartial()`; never copy the class or change Parcel order |
+| `XcLoggerConfigUpdate` | No-argument constructor; `FIELD_*` bits; getters/setters for request ID, bitmask, six base fields, and three public list mutations; `hasField()`, `hasChanges()`; Parcelable | API 4 request base class; applications normally let the updater create `XcLoggerConfig2` |
+| `XcLoggerConfigUpdate.ListMutation` | Constructor parameters `replace/replacement/additions/removals`; matching getters; `hasOperations()`; Parcelable | Collection getters are read-only views; values are validated by both client and service |
+| `XcLoggerConfig2` | Extends `XcLoggerConfigUpdate`; adds mode constants, `get/setPackageFilterMode()`, `hasPackageFilterMode()`, and overrides `hasChanges()` and Parcel handling | `packageFilterMode == null` means do not update the mode; it does not mean `off` |
+| `XcLoggerConfigUpdateResult` | No-argument/full constructor; getters for status, request ID, message, changed fields, and restart flag; `isSuccess()`; Parcelable | `isSuccess()` is `true` only for `SUCCESS (0)` and `NO_CHANGES (1)` |
+
 ### 2.5 Fluent Configuration Updates
 
 {Maintenance rule: This is the only recommended configuration-write path. Keep method inventory, constraints, result codes, and examples synchronized with `XcLoggerConfigUpdater`.}
@@ -421,11 +433,13 @@ Package mode is not stored in the old Parcelable. A Parcelable is Android's fixe
 |---|---|
 | Sizes/path | `totalSizeMb()`, `fileSizeMb()`, `bufferSizeBytes()`, `logDir()`, `logPeriodHours()` |
 | Level | `filterLevel(LogLevel)`, `filterLevel(String)` |
-| Tag allowlist | `filterTags()`, `filterTagsCsv()`, `addTag()`, `removeTag()` |
-| Package allowlist | `filterPackages()`, `filterPackagesCsv()`, `allPackages()`, `addPackage()`, `removePackage()` |
-| Package denylist | `blacklistPackages()`, `blacklistPackagesCsv()`, `addBlacklistedPackage()`, `removeBlacklistedPackage()`, `clearPackageBlacklist()` |
-| Package mode | `packageFilterMode(OFF)`, `packageFilterMode(WHITELIST)`, `packageFilterMode(BLACKLIST)` |
+| Tag allowlist | `filterTags(String...)`, `filterTags(Collection<String>)`, `filterTagsCsv(String)`, `addTag(String)`, `removeTag(String)` |
+| Package allowlist | `filterPackages(String...)`, `filterPackages(Collection<String>)`, `filterPackagesCsv(String)`, `allPackages()`, `addPackage(String)`, `removePackage(String)` |
+| Package denylist | `blacklistPackages(String...)`, `blacklistPackages(Collection<String>)`, `blacklistPackagesCsv(String)`, `addBlacklistedPackage(String)`, `removeBlacklistedPackage(String)`, `clearPackageBlacklist()` |
+| Package mode | `packageFilterMode(PackageFilterMode)`, `packageFilterMode(String)`; valid values are `OFF/WHITELIST/BLACKLIST` or their lowercase wire values |
 | Commit | `commitAsync()`; worker threads may use blocking `commit()` |
+
+`XcLoggerConfigUpdater(Transport, Executor)` is the public construction entry point. `Transport` implements `getApiVersion()` and `submit(XcLoggerConfig2, CommitCallback)`; `CommitCallback` contains only `onComplete(result)`. Both `LogLevel` and `PackageFilterMode` expose `wireValue()`. An updater is single-use; modification or another commit after submission throws `IllegalStateException`.
 
 #### Replace/Add/Remove Semantics
 
@@ -597,6 +611,8 @@ public final class ConfigActivity extends Activity {
 
 `XcLoggerTestService` must also be declared in the Manifest as shown in section 4.5. The example does not stop the Service in `ConfigActivity.onDestroy()` because several screens share the same `client`; stop it from the app's single lifecycle owner when logging is no longer needed.
 
+#### Result Status
+
 | Status | Meaning |
 |---|---|
 | `SUCCESS (0)` | Configuration committed |
@@ -643,14 +659,15 @@ app/
 
 ```gradle
 android {
-    defaultConfig { minSdk 29 }
-    buildFeatures { aidl true }
+    defaultConfig { minSdk 23 }
 }
 
 dependencies {
     implementation files('libs/xclogger-api-release.aar')
 }
 ```
+
+The prebuilt AAR already contains generated Binder classes, so normal consumers do not need `buildFeatures.aidl`. Enable it only when consuming the `xclogger-api` source module or maintaining `.aidl` files directly.
 
 ### 3.3 Package Visibility
 

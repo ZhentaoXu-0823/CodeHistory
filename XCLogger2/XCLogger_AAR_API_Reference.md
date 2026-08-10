@@ -1,8 +1,8 @@
 # XCLogger AAR API 参考文档
 
-> **版本**：v1.3.6 / 配置协议 API 4
-> **更新日期**：2026-07-31
-> **适用平台**：Android 10（API 29）及以上
+> **版本**：v2.0.0 / 配置协议 API 4
+> **更新日期**：2026-08-11
+> **适用平台**：Android 6.0（API 23）及以上
 
 {全局维护逻辑：本文只描述当前 AAR 的可调用能力。新增接口先更新“接口速查”，再更新可移植示例和注意事项；兼容接口不得与推荐接口混排；中英文版必须保持相同章节结构和行为结论。}
 
@@ -19,7 +19,7 @@ XCLogger 通过预编译 AAR 提供 AIDL 接口。App 连接设备上已安装�
 | 通信方式 | Android AIDL 服务绑定 |
 | AAR 包名 | `xclogger-api-release.aar` |
 | 服务 Action | `com.xcheng.xclogger.REMOTE_BIND` |
-| 最低支持 SDK | API 29 |
+| 最低支持 SDK | API 23 |
 
 > **访问提示**：XCLogger 服务允许其他 App 连接，目前没有额外的绑定权限检查。连接时必须指定设备上 XCLogger 的真实包名，避免连到错误应用。连接成功只说明服务存在，不代表调用者身份已经校验；量产版本建议增加签名权限或调用 UID 检查。
 
@@ -194,6 +194,8 @@ public final class MainActivity extends Activity {
 
 {维护逻辑：API 4 仍在使用的方法放在上半部分；只为旧客户端保留的接口放在下半部分并明确“不推荐”。}
 
+当前 `IXcLoggerService` 共 16 个方法。下表逐项列出全部方法，不把同一功能的不同入口合并计数。
+
 #### 当前推荐接口
 
 | 完整方法签名 | 参数 | 返回值与行为 |
@@ -204,12 +206,12 @@ public final class MainActivity extends Activity {
 | `XcLoggerConfig getConfiguration()` | 无 | 返回当前配置副本；配置尚未加载时可能为 `null` |
 | `boolean startLogging()` | 无 | 启动采集；`true` 表示启动成功 |
 | `boolean stopLogging()` | 无 | 停止采集；`true` 表示停止成功 |
-| `boolean isRunning()` | 无 | 返回当前持久化运行状态 |
+| `boolean isRunning()` | 无 | 返回当前真实采集状态（Service 已创建且采集器正在运行） |
 | `boolean triggerCompression()` | 无 | 请求无时间范围压缩；`true` 仅表示请求已受理 |
 | `boolean triggerCompressionWithRange(String startTime, String endTime)` | 时间格式 `yyyyMMddHHmmss`；当前应同时提供有效且有序的两个边界 | 请求范围压缩；最终结果通过回调或状态查询获得 |
 | `String getCompressStatus()` | 无 | 返回分号分隔状态，包含 `state`、`zip_files`、`retry_count`、`max_retry_count` |
 | `ParcelFileDescriptor getLogZip()` | 无 | 仅在 `WAIT_UPLOAD_RESULT` 可用；输出待上传列表中的第一份 ZIP |
-| `boolean reportUploadResult(boolean success)` | 所有需要上传的 ZIP 都成功后传 `true`，上传失败传 `false` | `true` 会删除待上传 ZIP；连续第 3 次失败也会删除 ZIP |
+| `boolean reportUploadResult(boolean success)` | 所有需要上传的 ZIP 都成功后传 `true`，上传失败传 `false` | `true` 会删除待上传 ZIP 并返回 `true`；传 `false` 时会更新重试状态但当前方法返回 `false`，应通过 `getCompressStatus()` 验证；连续第 3 次失败删除 ZIP |
 | `boolean cancelCompressTask()` | 无 | 取消当前压缩或清理待上传任务 |
 | `void registerListener(IXcLoggerListener listener)` | 回调对象 | 接收状态、操作和压缩结果 |
 | `void unregisterListener(IXcLoggerListener listener)` | 注册时使用的同一个回调对象 | Activity 或 Service 销毁前注销 |
@@ -218,7 +220,7 @@ public final class MainActivity extends Activity {
 
 | 完整方法签名 | 兼容目的 | 不推荐原因 |
 |---|---|---|
-| ~~`boolean updateConfigurationPartial(XcLoggerConfig config)`~~ | 支持旧客户端的非空 patch 更新 | 无结构化结果，不能原子表达列表 add/remove 和包过滤三态；新代码应使用 `XcLoggerConfigUpdater` |
+| ~~`boolean updateConfigurationPartial(XcLoggerConfig config)`~~ | 支持旧客户端的正整数/非空字符串 patch 更新；buffer 向上对齐到 512 且最大 4096 | 只返回同步布尔值；包过滤模式和 Tag/Level/Content 黑名单保持原值；不能表达列表 add/remove；新代码应使用 `XcLoggerConfigUpdater` |
 
 ### 2.3 回调注册与参数
 
@@ -410,6 +412,16 @@ public final class ListenerActivity extends Activity {
 | ~~`filterContent`~~ | 历史数据兼容 | 不参与内容过滤 |
 | ~~`filterContentBlacklist`~~ | 历史数据兼容 | 不参与内容过滤 |
 
+#### AAR 公共数据模型
+
+| 类型 | 公开契约 | 使用要求 |
+|---|---|---|
+| `XcLoggerConfig` | 无参构造；13 个字段的 getter/setter；`Parcelable` 的 `CREATOR`、`describeContents()`、`writeToParcel()` | 只用于读取配置和兼容 `updateConfigurationPartial()`；不得自行复制或改变 Parcel 顺序 |
+| `XcLoggerConfigUpdate` | 无参构造；字段位 `FIELD_*`；请求 ID、位图、6 个基础字段和 3 个公开名单变更的 getter/setter；`hasField()`、`hasChanges()`；Parcelable | API 4 请求基类；外部通常不直接实例化，使用 updater 生成 `XcLoggerConfig2` |
+| `XcLoggerConfigUpdate.ListMutation` | 构造参数 `replace/replacement/additions/removals`；对应 getter；`hasOperations()`；Parcelable | 集合 getter 返回只读视图；名单值仍由客户端和服务端共同校验 |
+| `XcLoggerConfig2` | 继承 `XcLoggerConfigUpdate`；增加三态常量、`get/setPackageFilterMode()`、`hasPackageFilterMode()`，并覆盖 `hasChanges()` 与 Parcel 实现 | `packageFilterMode == null` 表示不修改模式，不等同于 `off` |
+| `XcLoggerConfigUpdateResult` | 无参/全参数构造；状态、请求 ID、消息、变更字段、重启标记 getter；`isSuccess()`；Parcelable | 只有 `SUCCESS (0)` 和 `NO_CHANGES (1)` 的 `isSuccess()` 为 `true` |
+
 ### 2.5 链式配置更新
 
 {维护逻辑：本节是配置更新的唯一推荐入口；接口表、约束、结果码和示例必须随 `XcLoggerConfigUpdater` 源码同步更新。}
@@ -420,11 +432,13 @@ public final class ListenerActivity extends Activity {
 |---|---|
 | 数值/路径 | `totalSizeMb()`、`fileSizeMb()`、`bufferSizeBytes()`、`logDir()`、`logPeriodHours()` |
 | Level | `filterLevel(LogLevel)`、`filterLevel(String)` |
-| Tag 白名单 | `filterTags()`、`filterTagsCsv()`、`addTag()`、`removeTag()` |
-| Package 白名单 | `filterPackages()`、`filterPackagesCsv()`、`allPackages()`、`addPackage()`、`removePackage()` |
-| Package 黑名单 | `blacklistPackages()`、`blacklistPackagesCsv()`、`addBlacklistedPackage()`、`removeBlacklistedPackage()`、`clearPackageBlacklist()` |
-| Package 模式 | `packageFilterMode(OFF)`、`packageFilterMode(WHITELIST)`、`packageFilterMode(BLACKLIST)` |
+| Tag 白名单 | `filterTags(String...)`、`filterTags(Collection<String>)`、`filterTagsCsv(String)`、`addTag(String)`、`removeTag(String)` |
+| Package 白名单 | `filterPackages(String...)`、`filterPackages(Collection<String>)`、`filterPackagesCsv(String)`、`allPackages()`、`addPackage(String)`、`removePackage(String)` |
+| Package 黑名单 | `blacklistPackages(String...)`、`blacklistPackages(Collection<String>)`、`blacklistPackagesCsv(String)`、`addBlacklistedPackage(String)`、`removeBlacklistedPackage(String)`、`clearPackageBlacklist()` |
+| Package 模式 | `packageFilterMode(PackageFilterMode)`、`packageFilterMode(String)`；有效值为 `OFF/WHITELIST/BLACKLIST` 或对应小写 wire value |
 | 提交 | `commitAsync()`；工作线程可使用阻塞式 `commit()` |
+
+`XcLoggerConfigUpdater(Transport, Executor)` 是公开构造入口。`Transport` 必须实现 `getApiVersion()` 和 `submit(XcLoggerConfig2, CommitCallback)`；`CommitCallback` 只有 `onComplete(result)`。`LogLevel` 与 `PackageFilterMode` 枚举均提供 `wireValue()`。updater 为单次使用对象，任一提交后再次修改或提交都会抛出 `IllegalStateException`。
 
 #### replace/add/remove 语义
 
@@ -645,10 +659,7 @@ app/
 ```gradle
 android {
     defaultConfig {
-        minSdk 29
-    }
-    buildFeatures {
-        aidl true
+        minSdk 23
     }
 }
 
@@ -656,6 +667,8 @@ dependencies {
     implementation files('libs/xclogger-api-release.aar')
 }
 ```
+
+预编译 AAR 已包含生成后的 Binder 类，普通消费者不需要启用 `buildFeatures.aidl`。只有直接依赖 `xclogger-api` 源码模块或自行维护 `.aidl` 文件时才需要启用。
 
 ### 3.3 Manifest 包可见性
 

@@ -1,8 +1,8 @@
 # XcLogger 架构文档
 
-> **最后更新**：2026-07-31
-> **项目版本**：v1.3.6 / 配置协议 API 4
-> **最低 SDK**：API 29 (Android 10)
+> **最后更新**：2026-08-03
+> **项目版本**：v2.0.0 / 配置协议 API 4
+> **最低 SDK**：API 23 (Android 6.0)
 > **目标 SDK**：API 33 (Android 13)
 > **系统要求**：`android:sharedUserId="android.uid.system"`
 
@@ -89,9 +89,10 @@ XCLogger/ (rootProject.name)
 | `recorder` | `FilterPipeline` | 保留历史扩展过滤结构；Tag/Level/Content 黑名单和 Content 白名单未接入当前采集循环 |
 | `filemanager` | `FileManager` | 日志文件创建、写入、轮转、清理、操作历史维护及固定长度历史快照 |
 | `filemanager` | `FileCompressService` | 异步压缩、将操作历史作为 ZIP 最后一个 entry、上传状态、结果广播、ZIP 清理 |
-| `processctr` | `ConfigLoader` | XML / SharedPreferences 配置加载、缓存、更新和导入 |
-| `processctr` | `LogServiceController` | 前台服务生命周期调度 + sServiceActive（AtomicBoolean CAS）竞态守卫 |
-| `service` | `LogCaptureService` | 创建通知后立即进入前台，启动/停止采集流程 |
+| `processctr` | `ConfigLoader` | XML / SharedPreferences 配置加载、缓存、更新和导入；保证首次初始化与后续持久化配置的边界 |
+| `processctr` | `InitialLogSizePolicy` | API 33/35 首次初始化时优先读取主存储容量并归一化为 8/16/32/64 GB；8/16 GB 映射 512 MB 日志配额，32/64 GB 映射 1024 MB；日志路径 StatFs 和 256 MB 固定值依次兜底 |
+| `processctr` | `LogServiceController` | 前台服务生命周期调度；组合 Service 生命周期与采集器状态提供真实运行判断，并对启动请求防重 |
+| `service` | `LogCaptureService` | 创建通知后立即进入前台，回写 Service 生命周期，并以幂等方式启动/停止采集流程 |
 | `service` | `RemoteBindService` | AIDL 服务、监听器管理和管道 ZIP 输出 |
 | `receiver` | `XcLoggerBroadcastReceiver` | 系统事件、自定义控制广播和结果广播发送 |
 | `receiver` | `PackageEventManager` | 安装/卸载包时维护 UID/PID 集合和包名前缀刷新；刷新由日志读取循环约每 10 秒触发 |
@@ -234,7 +235,7 @@ Package 模式使用单个持久化值 `off` / `whitelist` / `blacklist`。默�
 
 ### 9.2 `app` APK 模块
 
-`app` 使用 `com.android.application` 插件，`namespace` 为 `com.xcheng.xclogger`，`compileSdk` 为 33，`minSdk` 为 29，`targetSdk` 为 33，版本为 `versionCode 8` / `versionName 1.2.14`。
+`app` 使用 `com.android.application` 插件，`namespace` 为 `com.xcheng.xclogger`，`compileSdk` 为 33，`minSdk` 为 23，`targetSdk` 为 33，版本为 `versionCode 15` / `versionName 2.0.0`。
 
 | 构建维度 | 配置 |
 |----------|------|
@@ -254,7 +255,7 @@ Package 模式使用单个持久化值 `off` / `whitelist` / `blacklist`。默�
 
 ### 9.3 `xclogger-api` AAR 模块
 
-`xclogger-api` 使用 `com.android.library` 插件，`namespace` 为 `com.xcheng.xclogger.api`，`compileSdk` 为 33，`minSdk` 为 29。该模块没有 product flavor，生成 debug/release library 变体；其 release 构建关闭混淆（`minifyEnabled false`）。
+`xclogger-api` 使用 `com.android.library` 插件，`namespace` 为 `com.xcheng.xclogger.api`，`compileSdk` 为 33，`minSdk` 为 23。该模块没有 product flavor，生成 debug/release library 变体；其 release 构建关闭混淆（`minifyEnabled false`）。
 
 模块依赖仅包含 `androidx.annotation:annotation:1.7.1`，并将 `consumer-rules.pro` 作为消费者规则。消费者规则保留 `com.xcheng.xclogger.service.**` 和 `com.xcheng.xclogger.util.**`，避免 AIDL 接口和 Parcelable 类被混淆。
 
@@ -283,8 +284,8 @@ Package 模式使用单个持久化值 `off` / `whitelist` / `blacklist`。默�
 
 `app` 是 AIDL 服务端，`xclogger-api` 是外部应用编译时使用的接口库。两者接口当前通过源代码副本保持一致，而不是通过 `app` 依赖 `xclogger-api` 保证一致。
 
-- `IXcLoggerService.aidl`、`IXcLoggerListener.aidl`、`XcLoggerConfig.aidl` 必须在两个模块同步修改。
-- `XcLoggerConfig` 的字段数量、类型、`writeToParcel()` / Parcel 构造函数的读写顺序必须同步；否则外部 AAR 客户端与 APK 服务端将发生跨进程反序列化不兼容。
+- `IXcLoggerService.aidl`、`IXcLoggerListener.aidl`、`IXcLoggerConfigUpdateCallback.aidl`、`XcLoggerConfig.aidl`、`XcLoggerConfig2.aidl`、`XcLoggerConfigUpdate.aidl`、`XcLoggerConfigUpdateResult.aidl` 共 7 个文件必须在两个模块同步修改。
+- `XcLoggerConfig` 的 13 个跨进程字段、类型、`writeToParcel()` / Parcel 构造函数的读写顺序必须同步；服务端内部 `packageFilterMode` 不写入旧 Parcel，因此不改变 wire layout。任何单边改变跨进程布局的修改都会造成 APK 与 AAR 反序列化不兼容。
 - AIDL 新增方法应只追加在接口尾部并同步发布 APK 与 AAR，避免旧客户端交易码错位。
 - 发布 AAR 前，应使用 `:xclogger-api:assembleRelease` 从当前源码重建，并与目标 APK 使用同一份接口定义进行验证。
 

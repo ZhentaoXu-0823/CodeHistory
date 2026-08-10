@@ -39,10 +39,10 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        // ==== VERSION MARKER v1.2.14-TARGETFIX ==== 
+        // ==== VERSION MARKER v2.0.0 ==== 
         // TARGET_PACKAGES: com.xcheng.mdm, com.xcheng.xcloggertestdemo, com.xcheng.xclogger, com.ko.xclogger
         // If you see this line in logcat, you have the FIXED version (compress callbacks work).
-        Log.d(TAG, "==== XCLOGGER v1.2.14-TARGETFIX ACTIVE | TARGET_PACKAGES: mdmdemo/common/pinelabs ====");
+        Log.d(TAG, "==== XCLOGGER v2.0.0 ACTIVE | TARGET_PACKAGES: mdmdemo/common/pinelabs ====");
         if (intent == null || intent.getAction() == null) {
             return;
         }
@@ -93,13 +93,14 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
         try {
             boolean shouldRun = resolveStartupState(context);
             if (shouldRun) {
-                LogServiceController.startLogService(context, "upgrade");
+                LogServiceController.startLogService(context, "boot");
                 recordOperationHistory(context, "Service auto-started after boot");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error handling boot completed", e);
         } finally {
-            startRemoteBindService(context);
+            // RemoteBindService is created on demand by clients using BIND_AUTO_CREATE.
+            // startRemoteBindService(context);
         }
     }
 
@@ -112,15 +113,21 @@ public class XcLoggerBroadcastReceiver extends BroadcastReceiver {
 
     private void handleMyPackageReplaced(Context context) {
         try {
+            if (LogServiceController.isActuallyRunning()) {
+                Log.i(TAG, "Log capture is already running after app update, skipping restore");
+                recordOperationHistory(context, "App update restore skipped: log capture is already running");
+                return;
+            }
             boolean shouldRun = resolveStartupState(context);
             if (shouldRun) {
                 LogServiceController.startLogService(context, "upgrade");
-                recordOperationHistory(context, "Service restarted after app update");
+                recordOperationHistory(context, "Service restore requested after app update");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error handling package replaced", e);
         } finally {
-            startRemoteBindService(context);
+            // RemoteBindService is created on demand by clients using BIND_AUTO_CREATE.
+            // startRemoteBindService(context);
         }
     }
 

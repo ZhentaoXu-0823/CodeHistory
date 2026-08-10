@@ -1,7 +1,7 @@
 # XcLogger 外部集成指南
 
-> **最后更新**：2026-07-31
-> **适用版本**：XCLogger v1.3.6 / 配置协议 API 4
+> **最后更新**：2026-08-03
+> **适用版本**：XCLogger v2.0.0 / 配置协议 API 4
 > 本文档面向外部应用开发者，说明如何按当前 APK 与公共 API 源码实际提供的广播协议、AIDL 远程接口和 AAR 进行集成。
 
 ---
@@ -74,6 +74,8 @@ adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST \
 | `filter_level` | String | `filterLevel` | Level 阈值；默认/查询值为 `v`，表示不按 Level 丢弃；兼容接受 `all` |
 | `filter_package` | String | `filterPackage` | 包名过滤；`,` 分隔，`.` 结尾表示前缀匹配，`all` 为不过滤 |
 | `filter_package_blacklist` | String | `filterPackageBlacklist` | Package 黑名单；非空值更新名单，实际是否生效由当前包过滤模式决定 |
+
+`total_size` 一旦写入数据库即为后续启动和覆盖升级的权威值。仅在数据库完全没有配置时，API 33/35 会优先按主存储容量生成首次值，读取失败时回退日志目录所在分区；其他 Android 版本使用 flavor XML。容量归一化为 8/16/32/64 GB，其中 8/16 GB 对应 512 MB 日志配额，32/64 GB 对应 1024 MB；两种容量读取都失败时使用 256 MB。显式配置更新仍可修改并持久化该值。
 
 过滤字段会在合并后统一校验。`filter_tag` 只允许精确小写 `all`，或由字母、数字、下划线、点、连字符组成的 Tag（单项 1～64 字符）；`filter_level` 只允许精确小写 `all` 或单个 `F/E/W/I/D/V` 字符（大小写均可）；Package 白/黑名单只允许 Java 风格包名，白名单还允许精确小写 `all`，末尾可带一个 `.` 表示前缀。Tag / Package 列表总长度最多 4096 字符、最多 64 项。分号、管道符、重定向符等 shell 特殊字符会被拒绝，结果中的 `success` 为 `false`。
 
@@ -182,7 +184,7 @@ bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 | `updateConfiguration2(update, callback)` | — | 唯一的异步结构化更新入口；`XcLoggerConfig2` 直接承载基础字段、名单变更和可选的 `packageFilterMode` |
 | `triggerCompression()` | `trigger_compress` | 不带时间范围的异步压缩 |
 | `triggerCompressionWithRange(startTime, endTime)` | `trigger_compress` + `startTime` / `endTime` | 带时间范围的异步压缩 |
-| `reportUploadResult(success)` | `upload_result` | 回传上传结果 |
+| `reportUploadResult(success)` | `upload_result` | 回传上传结果；传 `false` 时当前实现更新重试状态后仍返回 `false`，调用方需查询状态验收 |
 | `getCompressStatus()` | `query_compress_status` | 返回分号分隔状态字符串 |
 | `cancelCompressTask()` | `cancel_compress` | 取消并清理 ZIP |
 | `getLogZip()` | — | 返回首个待上传 ZIP 的 `ParcelFileDescriptor` pipe |
@@ -208,6 +210,16 @@ interface IXcLoggerListener {
 - `onOperationResult`：AIDL 同步控制请求得到的结果；异步压缩初始受理结果的 message 为 `async_result_pending` 时不会回调该方法。
 - `onCompressFinished`：压缩成功、失败或无日志文件时触发。
 - `onCompressReady`：仅在压缩成功且状态进入 `WAIT_UPLOAD_RESULT` 时触发。应先注册监听器再请求压缩。
+
+API 4 配置更新使用独立的 `IXcLoggerConfigUpdateCallback`：
+
+```java
+oneway interface IXcLoggerConfigUpdateCallback {
+    void onComplete(in XcLoggerConfigUpdateResult result);
+}
+```
+
+`onComplete()` 返回状态码、请求 ID、错误消息、实际变更字段及是否重启采集。它与长期注册的 `IXcLoggerListener` 无关，每次 `updateConfiguration2()` 请求单独传入。
 
 ### 3.4 使用示例
 
@@ -261,12 +273,22 @@ replace/add/remove 的最终值由 XCLogger 服务端串行计算，不依赖客
 ```
 app/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerService.aidl
 app/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerListener.aidl
+app/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerConfigUpdateCallback.aidl
 app/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfig.aidl
+app/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfig2.aidl
+app/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfigUpdate.aidl
+app/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfigUpdateResult.aidl
 
 xclogger-api/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerService.aidl
 xclogger-api/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerListener.aidl
+xclogger-api/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerConfigUpdateCallback.aidl
 xclogger-api/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfig.aidl
+xclogger-api/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfig2.aidl
+xclogger-api/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfigUpdate.aidl
+xclogger-api/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfigUpdateResult.aidl
 ```
+
+以上 7 个文件构成同一个 Binder 契约，发布 APK 与 AAR 前必须逐文件保持一致。AIDL 新方法只能追加到接口尾部；Parcelable 字段及 Parcel 读写顺序不得单边修改。
 
 ---
 
@@ -318,6 +340,8 @@ AAR 对外类型为：
 | `filterContentBlacklist` | String | 仅为兼容保留；持久化但不参与采集 |
 
 `XcLoggerConfig` 通过 Parcelable 跨进程传递。包过滤模式不追加到旧 Parcelable 布局；读取使用 `getPackageFilterMode()`，写入通过 `XcLoggerConfig2` 传给 `updateConfiguration2()`。为保持数据布局一致，外部应用应使用 AAR 提供的类，不应自行复制、改动或重排字段。
+
+`updateConfigurationPartial()` 是兼容接口，其实际 patch 规则与 API 4 updater 不同：正整数和非空字符串才覆盖旧值；`bufferSizeBytes` 会向上对齐到 512 并限制为最大 4096；包过滤模式及 Tag/Level/Content 黑名单字段保持原值。该接口只返回同步布尔结果，不提供字段级结果。新代码应使用 `XcLoggerConfigUpdater`。
 
 ### 4.3 压缩与上传流程
 
@@ -380,8 +404,8 @@ AAR 对外类型为：
 ## 六、版本信息
 
 - **文档版本**：按当前源码更新
-- **应用版本**：v1.3.6（versionCode 12）
+- **应用版本**：v2.0.0（versionCode 15）
 - **配置协议**：API 4
-- **最低 SDK**：API 29 (Android 10)
+- **最低 SDK**：API 23 (Android 6.0)
 - **目标 SDK**：API 33 (Android 13)
 - **AIDL 能力**：支持范围压缩、取消压缩、压缩状态查询和 `getLogZip()` 管道读取

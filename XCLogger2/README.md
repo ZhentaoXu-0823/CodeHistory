@@ -27,10 +27,10 @@ XcLogger 是运行在 Android 系统签名环境的企业级日志采集与管�
 
 | 约束 | 值 |
 |:--|:--|
-| 最低 SDK | API 29 (Android 10) |
+| 最低 SDK | API 23 (Android 6.0) |
 | 目标 SDK | API 33 (Android 13) |
 | 系统要求 | `android:sharedUserId="android.uid.system"` + platform key 签名 |
-| 接口 | AIDL（17 个方法，配置协议 API 4）+ 广播（12 个 op_type） |
+| 接口 | AIDL（16 个方法，配置协议 API 4）+ 广播（12 个 op_type） |
 | 编译 | productFlavors（common + p1416TPinelabs + r2351Combo）× buildTypes（debug + release） |
 
 ---
@@ -55,9 +55,10 @@ XcLogger 是运行在 Android 系统签名环境的企业级日志采集与管�
 | `app/build.gradle` | application 模块（productFlavors × 3，buildTypes × 2，AIDL enabled） |
 | `app/proguard-rules.pro` | release 混淆/资源压缩规则 |
 | `app/src/main/AndroidManifest.xml` | 清单：system uid、前台服务、广播接收器、AIDL 服务 |
-| `app/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerService.aidl` | AIDL 服务接口（17 个方法；配置协议 API 4） |
+| `app/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerService.aidl` | AIDL 服务接口（16 个方法；配置协议 API 4） |
 | `app/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerListener.aidl` | AIDL 回调监听接口（4 个回调方法） |
-| `app/src/main/aidl/com/xcheng/xclogger/util/XcLoggerConfig.aidl` | AIDL Parcelable 声明 |
+| `app/src/main/aidl/com/xcheng/xclogger/service/IXcLoggerConfigUpdateCallback.aidl` | API 4 配置结果回调（1 个回调方法） |
+| `app/src/main/aidl/com/xcheng/xclogger/util/*.aidl` | 4 个 Parcelable 声明：`XcLoggerConfig`、`XcLoggerConfig2`、`XcLoggerConfigUpdate`、`XcLoggerConfigUpdateResult` |
 
 | 包 | 类 | 职责 |
 |:--|:--|:--|
@@ -72,7 +73,7 @@ XcLogger 是运行在 Android 系统签名环境的企业级日志采集与管�
 | `filemanager` | `FileCompressService` | 异步压缩 + 将操作历史快照写为每个 ZIP 的最后一个 entry + 上传状态管理 + CTRL_RESULT 广播 + ZIP 清理 |
 | `filemanager` | `XcXorEncryption` | XOR 加密工具类（可选） |
 | `processctr` | `ConfigLoader` | XML 默认配置 → DB 持久化 → 热更新（stop→apply→start） |
-| `processctr` | `LogServiceController` | 前台服务生命周期调度 + sServiceActive 竞态守卫 |
+| `processctr` | `LogServiceController` | 前台服务生命周期调度 + 真实采集状态判断 + 启动请求防重 |
 | `processctr` | `ProcessController` | 组装 SystemLogCatcher + LogBuffer + FileManager 并启停 |
 | `service` | `LogCaptureService` | 前台 Service（STICKY），创建通知后立即 startForeground |
 | `service` | `RemoteBindService` | AIDL 服务 + IXcLoggerListener 注册表 + CompressResultReceiver + getLogZip 管道输出 |
@@ -117,8 +118,10 @@ XcLogger 是运行在 Android 系统签名环境的企业级日志采集与管�
 | `XCLogger_AAR_API_Reference_en.md` | 同上英文版 |
 | `XCLogger_Broadcast_Protocol.md` | 广播协议参考（12 个 op_type + 响应格式） |
 | `XCLogger_Broadcast_Protocol_en.md` | 同上英文版 |
-| `XCLogger_Product_Guide_v1.2.14.md` | 产品介绍文档 |
-| `XCLogger_Product_Guide_v1.2.14_en.md` | 同上英文版 |
+| `XCLogger_Product_Guide_v2.0.0.md` | 当前产品介绍文档 |
+| `XCLogger_Product_Guide_v2.0.0_en.md` | 当前产品介绍文档英文版 |
+| `XCLogger_Product_Guide_v1.3.8*.md` | v1.3.8 历史产品说明，仅用于版本追溯 |
+| `XCLogger_Product_Guide_v1.2.14*.md` | v1.2.14 历史产品说明，仅用于版本追溯 |
 
 ### 非源码目录（保留，不参与编译）
 
@@ -181,7 +184,7 @@ keystore.gradle (ext.keystoreConfigs)
 ③ android { applicationVariants.all { variant →
      outputFileName = "XCLogger_v{versionName}_{yyyyMMddHHmm}.apk"
    } }
-   → 统一输出命名（例如 XCLogger_v1.3.6_202607311244.apk）
+   → 统一输出命名（例如 XCLogger_v2.0.0_202608011200.apk）
 
 ④ afterEvaluate {
      tasks.register('assembleDebugUnitTest') { dependsOn 'assembleCommonDebugUnitTest' }
@@ -219,7 +222,7 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
 
 ```
 - com.android.library，namespace=com.xcheng.xclogger.api
-- minSdk=29，无 productFlavor，仅 debug/release library variants
+- minSdk=23，无 productFlavor，仅 debug/release library variants
 - 依赖：androidx.annotation:annotation:1.7.1
 - consumer-rules：保留 com.xcheng.xclogger.service.** 和 com.xcheng.xclogger.util.**
   （防止 AIDL 接口和 Parcelable 被外部应用混淆后不可用）
@@ -239,11 +242,13 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
 ### 2.2 AIDL 兼容性约束
 
 ```
-- IXcLoggerService.aidl / IXcLoggerListener.aidl / XcLoggerConfig.aidl
-  必须在 app/ 和 xclogger-api/ 中同步修改
+- 以下 7 个 AIDL 文件必须在 `app/` 和 `xclogger-api/` 中同步修改：
+  IXcLoggerService.aidl / IXcLoggerListener.aidl / IXcLoggerConfigUpdateCallback.aidl /
+  XcLoggerConfig.aidl / XcLoggerConfig2.aidl / XcLoggerConfigUpdate.aidl /
+  XcLoggerConfigUpdateResult.aidl
 
-- XcLoggerConfig 字段数量/类型/Parcel 读写顺序必须一致
-  → 否则外部 AAR 客户端与 APK 服务端跨进程反序列化不兼容
+- XcLoggerConfig 的 13 个跨进程字段、类型和 Parcel 读写顺序必须一致
+  → 服务端可保留不写入 Parcel 的内部字段（当前为 package mode），但不得改变旧 wire layout；否则外部 AAR 客户端与 APK 服务端反序列化不兼容
 
 - AIDL 新增方法只应追加在接口尾部
   → 避免旧客户端交易码错位（AIDL 按声明顺序分配 transact code）
@@ -257,7 +262,7 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
 第一层——控制入口
   XcLoggerBroadcastReceiver.onReceive(context, intent)
     → switch(action): BOOT_COMPLETED / MY_PACKAGE_REPLACED / CTRL_REQUEST / PACKAGE_ADDED / PACKAGE_REMOVED
-  RemoteBindService.AidlBinder (实现 IXcLoggerService, 13 个 AIDL 方法)
+  RemoteBindService.AidlBinder (实现 IXcLoggerService, 16 个 AIDL 方法)
   MainActivity / XcLoggerConfigActivity (配置 UI)
 
 第二层——命令编排（串行 + 安全）
@@ -395,23 +400,27 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
     → if (wasRunning): LogServiceController.startLogService(context, "boot")
   [覆盖升级] MY_PACKAGE_REPLACED
     → XcLoggerBroadcastReceiver.handleMyPackageReplaced()
-    → resolveStartupState() → db.loadRunningState()
-    → if (wasRunning): LogServiceController.startLogService(context, "upgrade")
+    → if (LogServiceController.isActuallyRunning()): 跳过重复恢复
+    → else resolveStartupState() → db.loadRunningState()
+    → if (shouldRun): LogServiceController.startLogService(context, "upgrade")
       // 直接调用，不经过 CommandSerialExecutor（避免线程池异步时序混乱）
 
 ② LogServiceController.startLogService(context, source):
-  if (!sServiceActive.compareAndSet(false, true)) return   // 全局守卫，防双路重复触发
+  if (isActuallyRunning()) return                         // Service 生命周期 + 采集器真实状态
+  if (!sStartRequestInFlight.compareAndSet(false, true)) return // 防并发启动请求
   context.startForegroundService(createServiceIntent(source))
 
   ③ LogCaptureService.onCreate():
    createNotification() → startForeground(NOTIF_ID, notification)
-   // 当前未调用 LogServiceController.setServiceActive(true)
+   LogServiceController.setServiceActive(true)
 
 ④ LogCaptureService.onStartCommand(intent):
   source = intent.getStringExtra("source")
-  ProcessController.getInstance(this).startLogging(source)
+  if (!isActuallyRunning()): ProcessController.getInstance(this).startLogging(source)
+  finally: LogServiceController.onStartRequestHandled()
 
 ⑤ ProcessController.startLogging(source):
+  if (isRunning()) return                 // 最终幂等保护，不创建重复日志文件
   ConfigLoader.load(context)           // DB 或 flavor XML → XcLoggerConfig
   new FileManager(context, config).startWriteThread()
   new SystemLogCatcher(context).startCapture(config)
@@ -599,7 +608,7 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
   路径A——PMS 直接拉服务:
     context.startForegroundService(Intent(pkg, LogCaptureService.class))
     → LogCaptureService.onCreate()
-       → 不调用 LogServiceController.setServiceActive(true)；该标志当前仅由 startLogService() 维护
+       → LogServiceController.setServiceActive(true)
     → LogCaptureService.onStartCommand(intent)
       → ProcessController.startLogging("direct")
         → SystemLogCatcher.startCapture() → 创建新文件  → 恢复采集
@@ -607,14 +616,14 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
   路径B——MY_PACKAGE_REPLACED 广播（兜底）:
     XcLoggerBroadcastReceiver.onReceive(context, MY_PACKAGE_REPLACED intent)
       → handleMyPackageReplaced()
-        → resolveStartupState() → db.loadRunningState() → true
-        → LogServiceController.startLogService(context, "upgrade")
-          // startLogService 入口的 isRunning() 守卫检测到路径A已启动 → 直接返回
+        → LogServiceController.isActuallyRunning() → true
+        → 跳过重复恢复，不再发出 startForegroundService
 
   时序分析:
     PMS 调用 startForegroundService 与 MY_PACKAGE_REPLACED 广播几乎同时到达
-    → 路径A 先执行 → isRunning() = true
-    → 路径B 后执行 → isRunning() 守卫阻止重复启动
+    → 路径A 已完成采集启动时，真实状态守卫阻止路径B重复启动
+    → 两路请求并发时，sStartRequestInFlight 阻止重复服务启动请求
+    → 即使两个 onStartCommand 均已入队，ProcessController.isRunning() 仍阻止创建第二个日志文件
     → 结果: 不产生 2 个新日志文件（修复前会生成 000004 + 000005）
 ```
 
@@ -629,8 +638,10 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
 | 启动采集 | `IXcLoggerService.startLogging()` | `CTRL_REQUEST:op_type=start` | `→ CommandSerialExecutor{case "start"} → LogServiceController.startLogService() → startForegroundService() → ProcessController.startLogging()` |
 | 停止采集 | `IXcLoggerService.stopLogging()` | `CTRL_REQUEST:op_type=stop` | `→ CommandSerialExecutor{case "stop"} → LogServiceController.stopLogService() → ProcessController.stopLogging()` |
 | 重启采集 | — | `CTRL_REQUEST:op_type=restart` | `→ stop → start` |
-| 查询状态 | `IXcLoggerService.isRunning()` | `CTRL_REQUEST:op_type=query_status` | `→ LogServiceController.isRunning() → running.get()` |
+| 查询状态 | `IXcLoggerService.isRunning()` | `CTRL_REQUEST:op_type=query_status` | `→ LogServiceController.isActuallyRunning() → Service 生命周期状态 && ProcessController.isRunning()` |
+| 查询协议版本 | `IXcLoggerService.getApiVersion()` | **无**（仅 AIDL） | 当前固定返回配置协议 `4` |
 | 获取配置 | `IXcLoggerService.getConfiguration()` | `CTRL_REQUEST:op_type=query_status` | `→ ConfigLoader.current() → XcLoggerConfig (Parcelable, 13 fields)` |
+| 查询包过滤模式 | `IXcLoggerService.getPackageFilterMode()` | **无**（仅 AIDL） | 配置已加载时返回当前三态，否则返回 `off` |
 | 更新配置 | `updateConfigurationPartial(cfg)` / `updateConfiguration2(XcLoggerConfig2, callback)` | `CTRL_REQUEST:op_type=update_config + extras` | 旧接口兼容 patch；`XcLoggerConfig2` 直接承载字段更新、名单 replace/add/remove 和包过滤模式，持久化成功后按需重启 |
 | 导入配置 | — | `CTRL_REQUEST:op_type=import_config + xml_path` | `→ ConfigLoader.importFromXml(xmlPath) → if(running)stop → apply → start` |
 | 全量压缩 | `IXcLoggerService.triggerCompression()` | `CTRL_REQUEST:op_type=trigger_compress` | `→ FileCompressService.compress(null) → sealCurrentFile → selectTodayFiles → ZIP → sendCtrl()` |
@@ -675,7 +686,7 @@ TARGET_PACKAGES = {com.xcheng.mdm, com.xcheng.xcloggertestdemo, com.xcheng.xclog
 | **来源反解析** | `SourceResolver.resolve(intent)` → 广播取 `Intent.getPackage()` / AIDL 取 `Binder.getCallingUid()` → 首个包名；**不信任外部传入的来源信息** | `control/SourceResolver.java` |
 | **来源白名单守卫**（定义但未激活） | `SourceWhitelistGuard` 已定义 `adb` 和 `com.xcheng.xcloggertestdemo` 判断，但当前 **未接入 CommandSerialExecutor 执行链路**（代码中无调用） | `control/SourceWhitelistGuard.java` |
 | **串行执行防并发** | `CommandSerialExecutor.execute(request)` → `newSingleThreadExecutor().execute()` → 严格 FIFO，防止配置/压缩状态并发读写 | `control/CommandSerialExecutor.java` |
-| **覆盖升级竞态守卫** | `LogServiceController.sServiceActive`（AtomicBoolean CAS）用于 `startLogService()` 入口；`LogCaptureService.onCreate()` 当前未回写该标志 | `processctr/LogServiceController.java` / `service/LogCaptureService.java` |
+| **覆盖升级竞态守卫** | `sServiceActive` 由 Service 生命周期维护，结合 `ProcessController.isRunning()` 得到真实采集状态；`sStartRequestInFlight` 防重复请求，采集入口再做幂等检查 | `processctr/LogServiceController.java` / `service/LogCaptureService.java` / `processctr/ProcessController.java` |
 | **AIDL 远程异常容错** | `notifyCompressReady()` / `notifyCompressFinished()` → `catch(RemoteException e)` → 只打日志，不中断广播循环 | `service/RemoteBindService.java` |
 | **XOR 加密（可选）** | `XcXorEncryption` 提供 `encryptLogFile()` / `decryptLatestLogFile()`，按字节异或 key | `filemanager/XcXorEncryption.java` |
 
@@ -697,7 +708,7 @@ gradlew.bat assembleP1416TPinelabsDebug
 gradlew.bat :xclogger-api:assembleRelease
 
 # 安装 PineLabs APK（需 system 签名环境，若用 adb install 则需先卸载旧版）
-adb install -r app\build\outputs\apk\p1416TPinelabs\release\XCLogger_v1.3.6_*.apk
+adb install -r app\build\outputs\apk\p1416TPinelabs\release\XCLogger_v2.0.0_*.apk
 adb shell am force-stop com.ko.xclogger   # 停止旧进程，避免新旧代码混合
 ```
 
@@ -739,9 +750,32 @@ adb pull /data/xclogger/mobilelog/ D:\temp\device_zips\
 
 ## 七、变更记录
 
+`----2026-08-11----`
+
+**v2.0.0（当前版本）/ 配置协议 API 4**
+
+- XCLogger2 版本更新为 2.0.0（versionCode 15），配置协议仍为 API 4。
+
+`----2026-08-01----`
+
+**v1.3.8（历史版本）/ 配置协议 API 4**
+
+- 首次持久化初始化时，仅 Android 13（API 33，含 Go）和 Android 15（API 35）根据主存储容量覆盖 XML 的 `total_size`；主接口失败时才回退日志目录所在分区。
+- 主存储容量使用公开的 `StorageStatsManager` 获取，并按系统设置页的十进制容量向上归一化为 8/16/32/64 GB；主接口失败时回退日志路径 `StatFs`。
+- 8/16 GB 配置 512 MB，32/64 GB 配置 1024 MB；两种容量读取均失败时兜底 256 MB。
+- 其他 Android 版本首次初始化继续使用 flavor XML；已有安装、覆盖升级和恢复默认始终保留数据库中的总容量。
+- XCLogger2 版本更新为 1.3.8（versionCode 14），配置协议仍为 API 4。
+
 `----2026-07-31----`
 
-**v1.3.6（当前版本）/ 配置协议 API 4**
+**v1.3.7（历史版本）/ 配置协议 API 4**
+
+- 覆盖安装恢复改为判断 Service 生命周期与 `SystemLogCatcher` 的真实采集状态，不再以持久化期望状态冒充当前状态。
+- 新增启动请求 in-flight 防重，并在 `ProcessController.startLogging()` 增加最终幂等保护，避免双广播或并发启动创建重复日志文件。
+- AIDL `isRunning()` 与广播 `query_status` 返回真实采集状态。
+- XCLogger2 版本更新为 1.3.7（versionCode 13），配置协议仍为 API 4。
+
+**v1.3.6（历史版本）/ 配置协议 API 4**
 
 - Package 过滤使用单个持久化三态：`OFF`、`WHITELIST`、`BLACKLIST`；默认 `OFF`，两套名单切换时保持不变。
 - Package 匹配以日志 UID 为主判据、PID 为兼容后备判据；支持精确包名和以 `.` 结尾的前缀。
