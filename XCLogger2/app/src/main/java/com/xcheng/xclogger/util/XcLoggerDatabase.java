@@ -117,6 +117,10 @@ public class XcLoggerDatabase {
         }
     }
 
+    public boolean hasSavedTotalSize() {
+        return prefs.contains(K_TOTAL_SIZE);
+    }
+
     public XcLoggerConfig loadConfig() {
         try {
             XcLoggerConfig config = new XcLoggerConfig();

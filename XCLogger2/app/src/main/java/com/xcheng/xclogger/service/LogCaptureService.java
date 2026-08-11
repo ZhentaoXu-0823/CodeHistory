@@ -14,6 +14,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import com.xcheng.xclogger.MainActivity;
 import com.xcheng.xclogger.R;
+import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.processctr.ProcessController;
 
 public class LogCaptureService extends Service {
@@ -28,15 +29,26 @@ public class LogCaptureService extends Service {
         // 极致启动优化：onCreate 第一行立即调用 startForeground 防止超时报错
         createNotification();
         processController = ProcessController.getInstance(this);
+        LogServiceController.setServiceActive(true);
         Log.i(TAG, "Worker Service created and foreground assigned.");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        String source = intent != null ? intent.getStringExtra("source") : "direct";
-        Log.i(TAG, "Log capture started via source: " + source);
-        if (processController != null) {
-            processController.startLogging(source);
+        String source = intent != null ? intent.getStringExtra("source") : null;
+        if (source == null || source.trim().isEmpty()) {
+            source = "direct";
+        }
+        try {
+            if (LogServiceController.isActuallyRunning()) {
+                Log.i(TAG, "Log capture is already running, skipping duplicate start command (source:"
+                        + source + ")");
+            } else if (processController != null) {
+                Log.i(TAG, "Starting log capture via source: " + source);
+                processController.startLogging(source);
+            }
+        } finally {
+            LogServiceController.onStartRequestHandled();
         }
         return START_STICKY;
     }
@@ -44,10 +56,14 @@ public class LogCaptureService extends Service {
     @Override
     public void onDestroy() {
         Log.i(TAG, "LogCaptureService stopping...");
-        if (processController != null) {
-            processController.stopLogging("service_destroyed");
+        try {
+            if (processController != null) {
+                processController.stopLogging("service_destroyed");
+            }
+        } finally {
+            LogServiceController.setServiceActive(false);
+            super.onDestroy();
         }
-        super.onDestroy();
     }
 
     private void createNotification() {

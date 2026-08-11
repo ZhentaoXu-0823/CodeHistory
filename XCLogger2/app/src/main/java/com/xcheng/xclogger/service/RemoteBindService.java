@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.os.IBinder;
+import android.os.Build;
 import android.os.RemoteCallbackList;
 import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
@@ -19,6 +20,7 @@ import com.xcheng.xclogger.control.ControlResult;
 import com.xcheng.xclogger.control.SourceResolver;
 import com.xcheng.xclogger.filemanager.FileCompressService;
 import com.xcheng.xclogger.processctr.ConfigLoader;
+import com.xcheng.xclogger.processctr.LogServiceController;
 import com.xcheng.xclogger.util.XcLoggerConfig;
 import com.xcheng.xclogger.util.XcLoggerConfig2;
 import com.xcheng.xclogger.util.XcLoggerConfigUpdateResult;
@@ -46,7 +48,11 @@ public class RemoteBindService extends Service {
         mCompressReceiver = new CompressResultReceiver();
         IntentFilter filter = new IntentFilter();
         filter.addAction(FileCompressService.ACTION_CTRL_RESULT);
-        registerReceiver(mCompressReceiver, filter, Context.RECEIVER_EXPORTED);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mCompressReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(mCompressReceiver, filter);
+        }
     }
 
     private final IXcLoggerService.Stub mBinder = new IXcLoggerService.Stub() {
@@ -62,7 +68,7 @@ public class RemoteBindService extends Service {
 
         @Override
         public boolean isRunning() throws RemoteException {
-            return new XcLoggerDatabase(getApplicationContext()).loadRunningState();
+            return LogServiceController.isActuallyRunning();
         }
 
         @Override

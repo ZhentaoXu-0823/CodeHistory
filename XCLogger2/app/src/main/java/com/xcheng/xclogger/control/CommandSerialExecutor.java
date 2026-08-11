@@ -139,7 +139,9 @@ public class CommandSerialExecutor {
                     return new ControlResult(true, "/data/xclogger/mobilelog", opType, true);
                 default: return new ControlResult(false, "unknown op_type", opType, db.loadRunningState());
             }
-            boolean running = db.loadRunningState();
+            boolean running = "query_status".equals(opType)
+                    ? LogServiceController.isActuallyRunning()
+                    : db.loadRunningState();
             if (controller != null) {
                 controller.recordOperationHistory("EXECUTE_END success=true, op=" + opType);
                 controller.recordOperationHistory("STATE_AFTER_EXECUTE running=" + running);

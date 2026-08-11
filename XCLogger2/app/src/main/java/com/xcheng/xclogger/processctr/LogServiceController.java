@@ -2,6 +2,7 @@ package com.xcheng.xclogger.processctr;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.util.Log;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.xcheng.xclogger.service.LogCaptureService;
@@ -20,6 +21,7 @@ import com.xcheng.xclogger.util.XcLoggerDatabase;
 public class LogServiceController {
     private static final String TAG = "LogServiceController";
     private static final AtomicBoolean sServiceActive = new AtomicBoolean(false);
+    private static final AtomicBoolean sStartRequestInFlight = new AtomicBoolean(false);
 
     /**
      * 启动日志服务
@@ -30,11 +32,25 @@ public class LogServiceController {
      * when PMS has already triggered startForegroundService.
      */
     public static void setServiceActive(boolean active) {
-        if (active) {
-            sServiceActive.compareAndSet(false, true);
-        } else {
-            sServiceActive.set(false);
+        sServiceActive.set(active);
+        if (!active) {
+            sStartRequestInFlight.set(false);
         }
+    }
+
+    /**
+     * Returns the real in-process capture state, not the persisted desired state.
+     */
+    public static boolean isActuallyRunning() {
+        ProcessController controller = ProcessController.getInstance();
+        return sServiceActive.get() && controller != null && controller.isRunning();
+    }
+
+    /**
+     * Called after LogCaptureService has handled a start request.
+     */
+    public static void onStartRequestHandled() {
+        sStartRequestInFlight.set(false);
     }
 
     public static void startLogService(Context context) {
@@ -46,13 +62,16 @@ public class LogServiceController {
      * @param source 触发来源，如 user/boot/broadcast:<action>/restart/internal
      */
     public static void startLogService(Context context, String source) {
-        // Guard: PMS may have already started the service (e.g. after APK upgrade)
-        if (!sServiceActive.compareAndSet(false, true)) {
-            Log.d(TAG, "Log service already active, skipping duplicate start");
+        if (isActuallyRunning()) {
+            Log.i(TAG, "Log capture is already running, skipping duplicate start (source:" + source + ")");
+            return;
+        }
+        if (!sStartRequestInFlight.compareAndSet(false, true)) {
+            Log.i(TAG, "Log service start is already pending, skipping duplicate request (source:" + source + ")");
             return;
         }
         try {
-            Log.i(TAG, "Starting log service");
+            Log.i(TAG, "Starting log service (source:" + source + ")");
             recordOperationHistory(context, "Log service start requested (source:" + source + ")");
 
             // 更新数据库状态
@@ -60,12 +79,17 @@ public class LogServiceController {
             database.saveRunningState(true);
 
             // 启动服务
-            Intent serviceIntent = createServiceIntent(context);
-            context.startForegroundService(serviceIntent);
+            Intent serviceIntent = createServiceIntent(context, source);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
 
             Log.i(TAG, "Log service started successfully");
 
         } catch (Exception e) {
+            sStartRequestInFlight.set(false);
             Log.e(TAG, "Failed to start log service", e);
             recordOperationHistory(context, "Log service start failed (source:" + source + "): " + e.getMessage());
             throw new RuntimeException("Failed to start log service", e);
@@ -86,6 +110,7 @@ public class LogServiceController {
     public static void stopLogService(Context context, String source) {
         try {
             sServiceActive.set(false);
+            sStartRequestInFlight.set(false);
             Log.i(TAG, "Stopping log service");
             recordOperationHistory(context, "Log service stop requested (source:" + source + ")");
 
@@ -94,7 +119,7 @@ public class LogServiceController {
             database.saveRunningState(false);
 
             // 停止服务
-            Intent serviceIntent = createServiceIntent(context);
+            Intent serviceIntent = createServiceIntent(context, source);
             context.stopService(serviceIntent);
 
             Log.i(TAG, "Log service stopped successfully");
@@ -110,13 +135,7 @@ public class LogServiceController {
      * 检查服务是否正在运行
      */
     public static boolean isServiceRunning(Context context) {
-        try {
-            XcLoggerDatabase database = new XcLoggerDatabase(context);
-            return database.loadRunningState();
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to check service status", e);
-            return false;
-        }
+        return isActuallyRunning();
     }
 
     /**
@@ -156,8 +175,10 @@ public class LogServiceController {
     /**
      * 创建服务Intent
      */
-    private static Intent createServiceIntent(Context context) {
-        return new Intent(context, LogCaptureService.class);
+    private static Intent createServiceIntent(Context context, String source) {
+        Intent intent = new Intent(context, LogCaptureService.class);
+        intent.putExtra("source", source);
+        return intent;
     }
 
     /**

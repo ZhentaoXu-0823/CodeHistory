@@ -13,9 +13,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -565,7 +566,8 @@ public class FileManager {
             if (files == null || files.length == 0) {
                 return;
             }
-            Arrays.sort(files, Comparator.comparingLong(File::lastModified));
+            Arrays.sort(files, (left, right) -> Long.compare(
+                    left.lastModified(), right.lastModified()));
             for (File file : files) {
                 long baseTime = getZipDateStartOfDay(file.getName());
                 if (baseTime < 0) {
@@ -646,11 +648,17 @@ public class FileManager {
                 return new File[0];
             }
 
-            File[] logFiles = Arrays.stream(files)
-                    .filter(file -> file.getName().startsWith(LOG_FILE_PREFIX) && file.getName().endsWith(LOG_FILE_EXTENSION))
-                    .toArray(File[]::new);
+            List<File> matchingFiles = new ArrayList<>();
+            for (File file : files) {
+                if (file.getName().startsWith(LOG_FILE_PREFIX)
+                        && file.getName().endsWith(LOG_FILE_EXTENSION)) {
+                    matchingFiles.add(file);
+                }
+            }
+            File[] logFiles = matchingFiles.toArray(new File[0]);
 
-            Arrays.sort(logFiles, Comparator.comparingLong(File::lastModified));
+            Arrays.sort(logFiles, (left, right) -> Long.compare(
+                    left.lastModified(), right.lastModified()));
 
             return logFiles;
         } catch (Exception e) {

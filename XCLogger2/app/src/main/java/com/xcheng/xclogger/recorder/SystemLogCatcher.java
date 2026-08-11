@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -172,7 +171,7 @@ public class SystemLogCatcher {
             totalBytesRead.set(0);
 
             // 检查进程是否立即退出
-            boolean processAlive = logcatProcess.isAlive();
+            boolean processAlive = isProcessAlive(logcatProcess);
             Log.i(TAG, "Process started, isAlive: " + processAlive);
 
             if (!processAlive) {
@@ -222,10 +221,10 @@ public class SystemLogCatcher {
                 logcatProcess.destroy();
 
                 // 等待进程结束，最多等待1秒
-                boolean terminated = logcatProcess.waitFor(1, TimeUnit.SECONDS);
+                boolean terminated = waitForProcess(logcatProcess, 1000);
                 if (!terminated) {
                     Log.w(TAG, "Process did not terminate gracefully, forcing destroy");
-                    logcatProcess.destroyForcibly();
+                    logcatProcess.destroy();
                 }
 
                 int exitValue = logcatProcess.exitValue();
@@ -269,7 +268,7 @@ public class SystemLogCatcher {
             Thread.sleep(500);
 
             if (logcatProcess != null) {
-                boolean isAlive = logcatProcess.isAlive();
+                boolean isAlive = isProcessAlive(logcatProcess);
                 Log.i(TAG, "Process monitor check (500ms): isAlive=" + isAlive);
 
                 if (!isAlive && running.get() && !stoppedIntentionally) {
@@ -302,7 +301,7 @@ public class SystemLogCatcher {
                 Thread.sleep(5000); // 每5秒检查一次
 
                 if (logcatProcess != null) {
-                    boolean isAlive = logcatProcess.isAlive();
+                    boolean isAlive = isProcessAlive(logcatProcess);
                                         if (!isAlive && running.get() && !stoppedIntentionally) {
                         try {
                             int exitValue = logcatProcess.exitValue();
@@ -504,13 +503,11 @@ public class SystemLogCatcher {
                 }
                 for (String packageName : process.pkgList) {
                     if (hasPackageFilter && isPackageMatched(packageName, filterPackages)) {
-                        refreshedMap.computeIfAbsent(packageName, key -> new HashSet<>())
-                                .add(process.pid);
+                        addIdentity(refreshedMap, packageName, process.pid);
                         refreshedPids.add(process.pid);
                     }
                     if (hasPackageBlacklist && isPackageMatched(packageName, blacklistPackages)) {
-                        refreshedBlacklistMap.computeIfAbsent(packageName, key -> new HashSet<>())
-                                .add(process.pid);
+                        addIdentity(refreshedBlacklistMap, packageName, process.pid);
                         refreshedBlacklistPids.add(process.pid);
                     }
                 }
@@ -595,7 +592,7 @@ public class SystemLogCatcher {
             String packageName,
             int uid) {
         if (uid < 0) return;
-        resolvedMap.computeIfAbsent(packageName, key -> new HashSet<>()).add(uid);
+        addIdentity(resolvedMap, packageName, uid);
         if (isUidSafeForConfiguredPackages(packageManager, uid, configuredPackages)) {
             resolvedUids.add(uid);
         } else {
@@ -612,6 +609,35 @@ public class SystemLogCatcher {
             if (!isPackageMatched(uidPackage, configuredPackages)) return false;
         }
         return true;
+    }
+
+    private static void addIdentity(Map<String, Set<Integer>> identities,
+                                    String packageName, int identity) {
+        Set<Integer> values = identities.get(packageName);
+        if (values == null) {
+            values = new HashSet<>();
+            identities.put(packageName, values);
+        }
+        values.add(identity);
+    }
+
+    private static boolean isProcessAlive(Process process) {
+        if (process == null) return false;
+        try {
+            process.exitValue();
+            return false;
+        } catch (IllegalThreadStateException stillRunning) {
+            return true;
+        }
+    }
+
+    private static boolean waitForProcess(Process process, long timeoutMs)
+            throws InterruptedException {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMs;
+        while (isProcessAlive(process) && SystemClock.elapsedRealtime() < deadline) {
+            Thread.sleep(50);
+        }
+        return !isProcessAlive(process);
     }
 
     private static Set<Integer> immutableSet(Set<Integer> values) {
@@ -668,7 +694,7 @@ public class SystemLogCatcher {
      * Unlike running.get() which is an in-memory flag, this verifies the real process.
      */
     public boolean isLogcatAlive() {
-        return logcatProcess != null && logcatProcess.isAlive();
+        return isProcessAlive(logcatProcess);
     }
 
     /** Refresh package UID and fallback PID snapshots through the shared package event manager. */
@@ -1029,14 +1055,15 @@ public class SystemLogCatcher {
             long lastReadTime = System.currentTimeMillis();
 
             Log.i(TAG, "Starting to read logcat output...");
-            Log.i(TAG, "Process isAlive: " + (logcatProcess != null ? logcatProcess.isAlive() : "null"));
+            Log.i(TAG, "Process isAlive: " + (logcatProcess != null
+                    ? isProcessAlive(logcatProcess) : "null"));
             Log.i(TAG, "Filter config - Tags: " + Arrays.toString(filterTags) +
                     ", Level: " + filterLevel + ", UIDs: " + filterUidSet
                     + ", fallbackPIDs: " + filterPidSet);
 
             while (running.get()) {
                 // 检查进程是否还存活
-                if (logcatProcess != null && !logcatProcess.isAlive()) {
+                if (logcatProcess != null && !isProcessAlive(logcatProcess)) {
                     try {
                         int exitValue = logcatProcess.exitValue();
                         Log.e(TAG, "Process exited while reading, exit code: " + exitValue);
@@ -1199,7 +1226,7 @@ public class SystemLogCatcher {
                     Log.e(TAG, "Logcat error output [" + errorLineCount + "]: " + line);
                 } else {
                     // 没有可用数据，检查进程是否还存活
-                    if (logcatProcess != null && !logcatProcess.isAlive()) {
+                    if (logcatProcess != null && !isProcessAlive(logcatProcess)) {
                         Log.d(TAG, "Process exited, stopping error output reading");
                         break;
                     }

@@ -14,7 +14,7 @@
     <log_dir>/storage/emulated/0/XcLogger</log_dir>
 
 <!--  Log coverage period (Hour) - 4 days  -->
-    <log_period>96</log_period>
+    <log_period>168</log_period>
 
 <!--  Initial auto start after default config is imported for the first time  -->
     <auto_start_enabled>true</auto_start_enabled>

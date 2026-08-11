@@ -223,7 +223,14 @@ public class FileCompressService extends Service {
         for (File f : snap) {
             cancelCheck();
             String d = date(f.getName());
-            if (d != null) map.computeIfAbsent(d, k -> new ArrayList<>()).add(f);
+            if (d != null) {
+                List<File> datedFiles = map.get(d);
+                if (datedFiles == null) {
+                    datedFiles = new ArrayList<>();
+                    map.put(d, datedFiles);
+                }
+                datedFiles.add(f);
+            }
         }
         List<File> out = new ArrayList<>();
         for (String d : map.keySet()) {
@@ -394,7 +401,8 @@ public class FileCompressService extends Service {
 
         // 按时间戳排序（保证相邻关系正确）
         List<File> sorted = new ArrayList<>(files);
-        sorted.sort(Comparator.comparingLong(f -> parseFileTimestamp(f.getName())));
+        Collections.sort(sorted, (left, right) -> Long.compare(
+                parseFileTimestamp(left.getName()), parseFileTimestamp(right.getName())));
 
         List<File> result = new ArrayList<>();
         for (int i = 0; i < sorted.size(); i++) {

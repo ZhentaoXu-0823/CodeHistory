@@ -2,6 +2,7 @@ package com.xcheng.xclogger.processctr;
 
 import android.content.Context;
 import android.content.res.XmlResourceParser;
+import android.os.Build;
 import android.util.Log;
 import com.xcheng.xclogger.R;
 import com.xcheng.xclogger.filemanager.FileManager;
@@ -47,7 +48,7 @@ public class ConfigLoader {
         return null;
     }
 
-    public XcLoggerConfig load(Context context) {
+    public synchronized XcLoggerConfig load(Context context) {
         try {
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             lastLoadInitializedFromXml = false;
@@ -88,34 +89,54 @@ public class ConfigLoader {
             if (db.isConfigInitialized() || db.hasSavedConfig()) {
                 XcLoggerConfig config = loadFromDatabase(context);
                 if (config != null) {
+                    if (!db.hasSavedTotalSize()) {
+                        if (!db.saveConfig(config)) {
+                            Log.e(TAG, "Failed to persist legacy total_size repair");
+                            return null;
+                        }
+                        Log.w(TAG, "Persisted missing legacy total_size without applying device policy");
+                    }
                     if (!db.isConfigInitialized()) {
                         db.setConfigInitialized(true);
                     }
                     currentConfig = config;
                     lastInitialAutoStartEnabled = db.loadInitialAutoStartEnabled();
-                    Log.i(TAG, "Config loaded from database");
+                    Log.i(TAG, "Config loaded from database: totalSizeMb="
+                            + config.getTotalSizeMb());
                     return config;
                 }
             }
 
             ConfigXmlResult result = loadFromXml(context);
             if (result != null && result.config != null) {
-                // 无论 DB 写入是否成功，先用 XML 中的值设置状态标记和当前配置
+                InitialLogSizePolicy.Decision sizeDecision = null;
+                if (InitialLogSizePolicy.shouldApplyForSdk(Build.VERSION.SDK_INT)) {
+                    sizeDecision = InitialLogSizePolicy.resolve(context, result.config.getLogDir());
+                    result.config.setTotalSizeMb(sizeDecision.getTotalSizeMb());
+                }
+                FilterConfigValidator.validate(result.config);
+
+                if (!db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
+                    Log.e(TAG, "Failed to commit initial config; logging will not use transient defaults");
+                    return null;
+                }
+
+                db.setDatabaseVersion(APK_CONFIG_VERSION);
                 lastInitialAutoStartEnabled = result.initialAutoStartEnabled;
                 lastLoadInitializedFromXml = true;
                 currentConfig = result.config;
-
-                if (!db.saveInitialConfig(result.config, result.initialAutoStartEnabled)) {
-                    Log.e(TAG, "Failed to commit initial config, using XML config directly");
-                } else {
-                    db.setDatabaseVersion(APK_CONFIG_VERSION);
-                    Log.i(TAG, "Config loaded from XML and saved to database");
-                    try {
-                        FileManager fm = new FileManager(context);
-                        fm.appendOperationHistory("Config initialized from XML and saved to database (first-time load, initial_auto_start=" + result.initialAutoStartEnabled + ")");
-                    } catch (Exception e) {
-                        Log.w(TAG, "Failed to record operation history for initial XML load", e);
-                    }
+                Log.i(TAG, "Initial config saved: sdk=" + Build.VERSION.SDK_INT
+                        + ", totalSizeMb=" + result.config.getTotalSizeMb()
+                        + ", adaptive=" + (sizeDecision != null));
+                try {
+                    FileManager fm = new FileManager(context);
+                    fm.appendOperationHistory("Config initialized and persisted (first-time load, sdk="
+                            + Build.VERSION.SDK_INT + ", total_size="
+                            + result.config.getTotalSizeMb() + "MB, adaptive="
+                            + (sizeDecision != null) + ", initial_auto_start="
+                            + result.initialAutoStartEnabled + ")");
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to record operation history for initial config", e);
                 }
                 return result.config;
             }
@@ -178,6 +199,10 @@ public class ConfigLoader {
 
             if (defaultConfig != null) {
                 XcLoggerDatabase db = new XcLoggerDatabase(context);
+                XcLoggerConfig persistedConfig = db.loadConfig();
+                if (db.hasSavedTotalSize() && persistedConfig != null) {
+                    defaultConfig.setTotalSizeMb(persistedConfig.getTotalSizeMb());
+                }
                 if (!db.saveInitialConfig(defaultConfig, result.initialAutoStartEnabled)) {
                     Log.e(TAG, "Failed to commit reset config");
                     return null;
@@ -348,16 +373,24 @@ public class ConfigLoader {
     private ConfigXmlResult loadFromXml(Context context) {
         XmlResourceParser parser = null;
         try {
-            // Dynamically select config XML based on build flavor
             String configName = context.getString(R.string.flavor_config);
-            int resId = context.getResources().getIdentifier(configName, "xml", context.getPackageName());
-            if (resId == 0) {
-                resId = R.xml.default_config; // fallback
+            int resId;
+            switch (configName) {
+                case "p1416t_pinelabs_default_config":
+                    resId = R.xml.p1416t_pinelabs_default_config;
+                    break;
+                case "r2351_combo_default_config":
+                    resId = R.xml.r2351_combo_default_config;
+                    break;
+                case "default_config":
+                default:
+                    resId = R.xml.default_config;
+                    break;
             }
             parser = context.getResources().getXml(resId);
             boolean[] autoStartHolder = new boolean[1];
             XcLoggerConfig config = parseConfigFromParser(parser, autoStartHolder);
-            Log.i(TAG, "Config loaded from XML file");
+            Log.i(TAG, "Config loaded from XML resource: " + configName);
             return new ConfigXmlResult(config, autoStartHolder[0]);
         } catch (XmlPullParserException | IOException e) {
             Log.e(TAG, "Error parsing XML config file", e);

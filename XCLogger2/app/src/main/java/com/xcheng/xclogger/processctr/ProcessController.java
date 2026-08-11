@@ -96,7 +96,12 @@ public class ProcessController {
      * 开始日志记录（带来源）
      * @param source 触发来源：user/service/boot/broadcast:<action>/restart 等
      */
-    public void startLogging(String source) {
+    public synchronized void startLogging(String source) {
+        if (isRunning()) {
+            Log.i(TAG, "Logging is already running, skipping duplicate start (source:" + source + ")");
+            recordOperationHistory("Duplicate logging start skipped (source:" + source + ")");
+            return;
+        }
         try {
             Log.i(TAG, "Starting logging process");
 
@@ -150,7 +155,7 @@ public class ProcessController {
      * 停止日志记录（带来源）
      * @param source 触发来源
      */
-    public void stopLogging(String source) {
+    public synchronized void stopLogging(String source) {
         try {
             Log.i(TAG, "Stopping logging process");
 
