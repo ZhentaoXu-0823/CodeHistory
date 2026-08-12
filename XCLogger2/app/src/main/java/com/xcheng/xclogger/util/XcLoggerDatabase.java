@@ -37,6 +37,7 @@ public class XcLoggerDatabase {
     private static final String K_UPLOAD_FAIL_COUNT = "upload_fail_count";
     private static final String K_CANCEL_COMPRESS_REQUESTED = "cancel_compress_requested";
     private static final String K_RESTART_COMPRESS_REQUESTED = "restart_compress_requested";
+    private static final String K_STORAGE_FLOOR_ACTIVE = "storage_floor_active";
 
     private final SharedPreferences prefs;
 
@@ -246,6 +247,14 @@ public class XcLoggerDatabase {
     public void setUploadFailCount(int count) {
         prefs.edit().putInt(K_UPLOAD_FAIL_COUNT, count).apply();
         Log.i(TAG, "Upload fail count saved: " + count);
+    }
+
+    public boolean isStorageFloorActive() {
+        return prefs.getBoolean(K_STORAGE_FLOOR_ACTIVE, false);
+    }
+
+    public void setStorageFloorActive(boolean active) {
+        prefs.edit().putBoolean(K_STORAGE_FLOOR_ACTIVE, active).apply();
     }
 
     public boolean isCancelCompressRequested() {

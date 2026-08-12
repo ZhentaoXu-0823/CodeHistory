@@ -169,6 +169,20 @@ public class ConfigLoader {
     public boolean updateConfig(Context context, XcLoggerConfig config) {
         try {
             FilterConfigValidator.validate(config);
+
+            // total_size 门限校验（UI 通道）：超范围直接拒绝，不落库
+            String quotaReject = LogQuotaPolicy.checkTotalSizeBounds(
+                    context, config.getLogDir(), config.getTotalSizeMb());
+            if (quotaReject != null) {
+                Log.w(TAG, "Config update rejected by quota: " + quotaReject);
+                try {
+                    new FileManager(context).appendOperationHistory(
+                            "TOTAL_SIZE_REJECTED channel=ui, reason=" + quotaReject);
+                } catch (Exception ignored) {
+                }
+                return false;
+            }
+
             XcLoggerConfig oldConfig = this.currentConfig;
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             if (!db.saveConfig(config)) {
@@ -500,6 +514,18 @@ public class ConfigLoader {
 
             // 合并：缺省字段保持当前值
             XcLoggerConfig merged = new PartialConfigMerger().merge(current, patch);
+
+            // total_size quota check (field-level reject)
+            String quotaReject = LogQuotaPolicy.checkTotalSizeBounds(
+                    context, merged.getLogDir(), merged.getTotalSizeMb());
+            if (quotaReject != null) {
+                merged.setTotalSizeMb(current.getTotalSizeMb());
+                try {
+                    new FileManager(context).appendOperationHistory(
+                            "TOTAL_SIZE_REJECTED channel=import_config, reason=" + quotaReject);
+                } catch (Exception ignored) {
+                }
+            }
 
             // 构建差异日志
             String diff = buildConfigDiff(current, merged);

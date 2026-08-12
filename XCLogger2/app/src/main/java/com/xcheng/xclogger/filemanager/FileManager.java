@@ -477,13 +477,77 @@ public class FileManager {
 
     private void checkAndCleanBeforeNewFile(long newFileTime) {
         try {
-            if (needSpaceForNewFile()) {
+            XcLoggerDatabase db = new XcLoggerDatabase(context);
+
+            // ① 绝对保底：可用空间 <= 1GB -> 删旧文件直到释放至少一个文件大小
+            boolean absoluteFloorLow = com.xcheng.xclogger.processctr.LogQuotaPolicy
+                    .isAbsoluteFloorLow(context, mainLogDir != null ? mainLogDir.getAbsolutePath() : null);
+            // ② 相对保底：可用空间 <= 总存储 x 10% -> 同上
+            boolean relativeFloorLow = com.xcheng.xclogger.processctr.LogQuotaPolicy
+                    .isRelativeFloorLow(context, mainLogDir != null ? mainLogDir.getAbsolutePath() : null);
+
+            if (absoluteFloorLow || relativeFloorLow) {
+                long targetBytes = config != null
+                        ? config.getFileSizeMb() * 1024L * 1024L : 4L * 1024L * 1024L;
+                boolean released = deleteOldestFilesForTarget(targetBytes);
+                if (!released) {
+                    // 删无可删（只剩当前文件或空间仍不足）-> 防抖记录一次，服务继续运行
+                    if (!db.isStorageFloorActive()) {
+                        db.setStorageFloorActive(true);
+                        appendOperationHistory("STORAGE_FLOOR active: absolute=" + absoluteFloorLow
+                                + ", relative=" + relativeFloorLow
+                                + ", cannot release space, new log file skipped");
+                    }
+                } else {
+                    db.setStorageFloorActive(false);
+                }
+            } else if (needSpaceForNewFile()) {
                 deleteOldestFileForSpace();
             }
             deleteFilesExceedingTimeLimit(newFileTime);
             deleteZipExceedingTimeLimit(newFileTime);
         } catch (Exception e) {
             Log.e(TAG, "Error checking and cleaning files", e);
+        }
+    }
+
+    /**
+     * 从最旧往新删除日志文件（排除当前正在写的文件），
+     * 累计释放 >= targetBytes 即停止。
+     *
+     * @return true 表示成功释放了至少 targetBytes；false 表示无可删文件或仍不足
+     */
+    private boolean deleteOldestFilesForTarget(long targetBytes) {
+        try {
+            File[] files = getLogFilesSortedByTime();
+            long released = 0;
+            boolean anyDeleted = false;
+            if (files != null) {
+                for (File file : files) {
+                    if (released >= targetBytes) {
+                        break;
+                    }
+                    // 保护当前正在写的文件，绝不删除
+                    if (currentMainLogFile != null && file.equals(currentMainLogFile)) {
+                        continue;
+                    }
+                    long fileSize = file.length();
+                    if (file.delete()) {
+                        released += fileSize;
+                        anyDeleted = true;
+                        Log.i(TAG, "Deleted oldest file for space floor: " + file.getName()
+                                + " (size: " + fileSize + " bytes)");
+                        appendOperationHistory("Log file deleted (space floor): "
+                                + file.getAbsolutePath() + " (size: " + fileSize + " bytes)");
+                    } else {
+                        Log.w(TAG, "Failed to delete file for space floor: " + file.getName());
+                    }
+                }
+            }
+            return anyDeleted && released >= targetBytes;
+        } catch (Exception e) {
+            Log.e(TAG, "Error deleting files for space floor", e);
+            return false;
         }
     }
 

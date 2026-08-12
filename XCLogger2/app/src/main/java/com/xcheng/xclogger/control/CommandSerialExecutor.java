@@ -56,6 +56,24 @@ public class CommandSerialExecutor {
                         "No effective changes", "", false);
             }
 
+            // total_size 门限校验（字段级拒绝）：超范围则恢复为 current 值，其余字段照常生效
+            String quotaReject = null;
+            if (applied.changedFields.contains("totalSizeMb")) {
+                quotaReject = com.xcheng.xclogger.processctr.LogQuotaPolicy
+                        .checkTotalSizeBounds(context, applied.config.getLogDir(),
+                                applied.config.getTotalSizeMb());
+                if (quotaReject != null) {
+                    applied.config.setTotalSizeMb(current.getTotalSizeMb());
+                    applied.changedFields.remove("totalSizeMb");
+                    recordQuotaReject(context, "update_config_2", quotaReject);
+                    if (applied.changedFields.isEmpty()) {
+                        return new XcLoggerConfigUpdateResult(requestId,
+                                XcLoggerConfigUpdateResult.INVALID_ARGUMENT,
+                                quotaReject, "", false);
+                    }
+                }
+            }
+
             XcLoggerDatabase db = new XcLoggerDatabase(context);
             boolean wasRunning = db.loadRunningState();
             if (!ConfigLoader.getInstance().updateConfig(context, applied.config)) {
@@ -158,6 +176,18 @@ public class CommandSerialExecutor {
         }
     }
 
+    private void recordQuotaReject(Context context, String channel, String reason) {
+        try {
+            ProcessController controller = ProcessController.getInstance(context);
+            if (controller != null) {
+                controller.recordOperationHistory("TOTAL_SIZE_REJECTED channel=" + channel
+                        + ", reason=" + reason);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to record quota reject history", e);
+        }
+    }
+
     private ControlResult buildCompressResult(String opType, FileCompressService.Result r, boolean running, ProcessController controller) {
         if (controller != null) controller.recordOperationHistory("EXECUTE_END success=" + r.success + ", op=" + opType + ", msg=" + r.message);
         return new ControlResult(r.success, r.message, opType, running, r.state, r.zipFiles, r.retryCount, r.maxRetryCount);
@@ -168,6 +198,16 @@ public class CommandSerialExecutor {
         if (current == null) current = ConfigLoader.getInstance().load(context);
         XcLoggerConfig merged = configMerger.merge(current, request.getConfigPatch());
         FilterConfigValidator.validate(merged);
+
+        // total_size 门限校验（字段级拒绝）：超范围则恢复为 current 值，其余字段照常生效
+        int requestedTotalSizeMb = merged.getTotalSizeMb();
+        String quotaReject = com.xcheng.xclogger.processctr.LogQuotaPolicy
+                .checkTotalSizeBounds(context, merged.getLogDir(), requestedTotalSizeMb);
+        if (quotaReject != null) {
+            merged.setTotalSizeMb(current.getTotalSizeMb());
+            recordQuotaReject(context, request.getChannel() + ":" + request.getOpType(), quotaReject);
+        }
+
         ProcessController controller = ProcessController.getInstance(context);
         if (controller != null) {
             controller.recordOperationHistory("Config update diff: " + buildConfigDiff(current, merged));
