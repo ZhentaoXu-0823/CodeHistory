@@ -501,7 +501,9 @@ ConfigLoader.load(context) → db = XcLoggerDatabase(context)
     createNewMainLogFile():
       generateFileName() → "mainlog_" + String.format("%06d", globalIndex) + "_" + yyyyMMdd + "_" + HHmmss + "_" + String.format("%04d", sequence) + ".txt"
       checkAndCleanBeforeNewFile():
-         deleteOldestFileForSpace()       // 每次创建新文件前最多删除一个最旧文件
+        // v2.0.1 空间保底：①可用空间<=1GB ②可用空间<=总存储10% 任一触发 → 删最旧直至释放>=单文件大小
+        //                    ③日志总量+新文件>total_size → 删最旧1个（原有）
+        deleteOldestFilesForTarget()    // 从最旧往新删，排除当前文件，累计释放>=targetBytes停止
         deleteFilesExceedingTimeLimit()  // 遍历所有 log 文件，mtime 超过 logPeriodHours → 删除
         deleteZipExceedingTimeLimit()    // 同上，针对 zip 文件
 ```
@@ -750,9 +752,17 @@ adb pull /data/xclogger/mobilelog/ D:\temp\device_zips\
 
 ## 七、变更记录
 
+`----2026-08-12----`
+
+**v2.0.1（当前版本）/ 配置协议 API 4**
+
+- 新增 total_size 门限：下限为首次约定值（8/16GB→512MB，32/64GB→1024MB，探测失败兜底 256MB），上限为归一化档位 × 90%（8GB→6866MB、16GB→13732MB、32GB→27465MB、64GB→54931MB）。AIDL、广播、UI、import_config 四通道统一校验，超范围拒绝该字段（其余字段正常生效），拒绝记录操作历史。
+- 新增存储空间保底机制：新建日志文件前检查 ①可用空间 ≤ 1GB ②可用空间 ≤ 总存储 10% ③日志总量 + 新文件 > total_size；任一触发即从最旧往新删除（排除当前文件），累计释放 ≥ 单文件大小后新建；删无可删时操作历史记录一次（防抖），日志服务继续运行，空间释放后自动恢复。
+- XCLogger2 版本更新为 2.0.1（versionCode 15），配置协议仍为 API 4。
+
 `----2026-08-11----`
 
-**v2.0.0（当前版本）/ 配置协议 API 4**
+**v2.0.0（历史版本）/ 配置协议 API 4**
 
 - XCLogger2 版本更新为 2.0.0（versionCode 15），配置协议仍为 API 4。
 

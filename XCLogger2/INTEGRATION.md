@@ -75,7 +75,9 @@ adb shell am broadcast -a com.xcheng.xclogger.CTRL_REQUEST \
 | `filter_package` | String | `filterPackage` | 包名过滤；`,` 分隔，`.` 结尾表示前缀匹配，`all` 为不过滤 |
 | `filter_package_blacklist` | String | `filterPackageBlacklist` | Package 黑名单；非空值更新名单，实际是否生效由当前包过滤模式决定 |
 
-`total_size` 一旦写入数据库即为后续启动和覆盖升级的权威值。仅在数据库完全没有配置时，API 33/35 会优先按主存储容量生成首次值，读取失败时回退日志目录所在分区；其他 Android 版本使用 flavor XML。容量归一化为 8/16/32/64 GB，其中 8/16 GB 对应 512 MB 日志配额，32/64 GB 对应 1024 MB；两种容量读取都失败时使用 256 MB。显式配置更新仍可修改并持久化该值。
+`total_size` 一旦写入数据库即为后续启动和覆盖升级的权威值。仅在数据库完全没有配置时，API 33/35 会优先按主存储容量生成首次值，读取失败时回退日志目录所在分区；其他 Android 版本使用 flavor XML。容量归一化为 8/16/32/64 GB，其中 8/16 GB 对应 512 MB 日志配额，32/64 GB 对应 1024 MB；两种容量读取都失败时使用 256 MB。
+
+v2.0.1 起，显式配置更新受到门限约束：`total_size` 合法范围为 `[首次约定值, 归一化档位 × 90%]`（8GB→6866MB、16GB→13732MB、32GB→27465MB、64GB→54931MB）。AIDL（`updateConfigurationPartial` / `updateConfiguration2`）、广播（`update_config` / `import_config`）和 UI 保存四通道统一校验；超范围时**仅拒绝 total_size 字段**（恢复为当前值），其余字段正常生效，拒绝记录到操作历史。仅 total_size 被拒时，`updateConfigurationPartial` / `updateConfiguration2` 返回失败结果。此外，新建日志文件前执行存储空间保底检查：可用空间 ≤ 1GB 或 ≤ 总存储 10% 时，从最旧往新删除日志文件（排除当前正在写的文件）直至释放至少一个文件大小；删无可删时记录操作历史一次（防抖），日志服务继续运行，空间释放后自动恢复。
 
 过滤字段会在合并后统一校验。`filter_tag` 只允许精确小写 `all`，或由字母、数字、下划线、点、连字符组成的 Tag（单项 1～64 字符）；`filter_level` 只允许精确小写 `all` 或单个 `F/E/W/I/D/V` 字符（大小写均可）；Package 白/黑名单只允许 Java 风格包名，白名单还允许精确小写 `all`，末尾可带一个 `.` 表示前缀。Tag / Package 列表总长度最多 4096 字符、最多 64 项。分号、管道符、重定向符等 shell 特殊字符会被拒绝，结果中的 `success` 为 `false`。
 

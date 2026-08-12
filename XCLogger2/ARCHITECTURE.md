@@ -15,7 +15,7 @@ XcLogger 是运行在系统签名环境的 Android 系统日志采集与管理�
 | 能力 | 当前实现 |
 |------|----------|
 | 日志捕获 | `logcat -v threadtime,uid`；按 Tag / Level 过滤，并将配置包名映射为 UID/PID；UID 为主判据，PID 为后备判据 |
-| 文件管理 | 文件写入、按大小轮转、按周期清理、全局索引命名 |
+| 文件管理 | 文件写入、按大小轮转、按周期清理、全局索引命名；新建前执行空间保底检查（可用≤1GB / 可用≤总存储10% / 总量>total_size 任一触发则删最旧，排除当前文件） |
 | 配置管理 | XML 默认配置加载至 SharedPreferences；支持部分更新和 XML 文件导入 |
 | 服务化 | 前台 Service 承载采集；BOOT_COMPLETED / MY_PACKAGE_REPLACED 后恢复 |
 | 远程控制 | AIDL + 广播，支持启停、配置、压缩、上传结果回传和状态查询 |
@@ -91,6 +91,7 @@ XCLogger/ (rootProject.name)
 | `filemanager` | `FileCompressService` | 异步压缩、将操作历史作为 ZIP 最后一个 entry、上传状态、结果广播、ZIP 清理 |
 | `processctr` | `ConfigLoader` | XML / SharedPreferences 配置加载、缓存、更新和导入；保证首次初始化与后续持久化配置的边界 |
 | `processctr` | `InitialLogSizePolicy` | API 33/35 首次初始化时优先读取主存储容量并归一化为 8/16/32/64 GB；8/16 GB 映射 512 MB 日志配额，32/64 GB 映射 1024 MB；日志路径 StatFs 和 256 MB 固定值依次兜底 |
+| `processctr` | `LogQuotaPolicy` | total_size 门限计算与存储空间保底探测：下限=首次约定值（512/1024/256MB），上限=归一化档位×90%；绝对保底（可用≤1GB）与相对保底（可用≤总存储10%）判断，30s 缓存 |
 | `processctr` | `LogServiceController` | 前台服务生命周期调度；组合 Service 生命周期与采集器状态提供真实运行判断，并对启动请求防重 |
 | `service` | `LogCaptureService` | 创建通知后立即进入前台，回写 Service 生命周期，并以幂等方式启动/停止采集流程 |
 | `service` | `RemoteBindService` | AIDL 服务、监听器管理和管道 ZIP 输出 |

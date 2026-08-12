@@ -1,8 +1,8 @@
 # XCLogger Product Guide
 
-> Version: v2.0.0 / Configuration Protocol API 4
+> Version: v2.0.1 / Configuration Protocol API 4
 >
-> Updated: 2026-08-11
+> Updated: 2026-08-12
 
 ## 1. Product Scope
 
@@ -19,7 +19,7 @@ This guide describes behavior implemented by the current source. Use `XCLogger_A
 | Tag filtering | Allowlist; `all` disables restriction; `AndroidRuntime`, `DEBUG`, and `libc` bypass filters |
 | Level filtering | `f/e/w/i/d/v` threshold; `v` is the default no-drop value; validation also accepts `all` |
 | Package filtering | Mutually exclusive `OFF`, `WHITELIST`, and `BLACKLIST`; exact names and dot-suffixed prefixes resolve to UIDs/PIDs |
-| File management | Rotates by per-file size and removes old logs by retention and total capacity before creating a file |
+| File management | Rotates by per-file size and removes old logs by retention and total capacity before creating a file; when available space is ≤ 1GB or ≤ 10% of total storage, deletes oldest files (excluding the current file) until at least one file size is released |
 | Initial capacity | Only when the database has no configuration: API 33/35 normalize storage to 8/16/32/64 GB; 8/16 GB map to a 512 MB log quota and 32/64 GB to 1024 MB; failures fall back to the log partition and then 256 MB; other versions use flavor XML |
 | Configuration | Compatibility partial patch and API 4 atomic update; an effective update restarts active capture after persistence |
 | Compression | No-range requests create per-day ZIPs; requests with either boundary create one range ZIP from overlapping file intervals |
@@ -61,6 +61,7 @@ The total-size values above are XML seeds. On API 33/35, first persistence prefe
 API 4 structured update rules:
 
 - `totalSizeMb/fileSizeMb/logPeriodHours > 0`, and `fileSizeMb <= totalSizeMb`.
+- `totalSizeMb` is bounded: the floor is the first-run quota (512MB for 8/16GB, 1024MB for 32/64GB, 256MB fallback) and the ceiling is normalized capacity × 90%; all four channels (AIDL/broadcast/UI/import) validate uniformly, and an out-of-range value rejects only that field while others apply.
 - `bufferSizeBytes` is 512–4096 and aligned to 512.
 - Lists support replace/add/remove; the package denylist also supports clear and allowlists support `all`.
 - A single-thread FIFO merges each request against the latest server configuration.
